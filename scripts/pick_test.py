@@ -2,7 +2,8 @@
 
 Sequence:
     1. Check the gripper answers; activate it if needed.
-    2. Record the current TCP pose.
+    2. Record the current TCP pose; refuse to move if the lift fails the
+       checks in safety.py (active TCP, speed, plane and joint-limit margins).
     3. Open, lift the TCP 2 cm, close, open.
     4. Return to the start pose.
 
@@ -17,6 +18,7 @@ from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
 
 import gripper as g
+import safety
 
 ROBOT_IP = '192.168.0.1'
 
@@ -48,6 +50,10 @@ def main():
             up = list(start)
             up[2] += LIFT
             print('TCP start:', start)
+
+            problems = safety.preflight(control, start, up, receive.getActualQ(), SPEED)
+            if problems:
+                raise SystemExit('Not moving:\n  ' + '\n  '.join(problems))
 
             grip(s, g.POS_OPEN)
             control.moveL(up, SPEED, ACCEL)

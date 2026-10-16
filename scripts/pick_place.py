@@ -3,8 +3,9 @@
 Sequence:
     1. Check the gripper answers; activate it if needed.
     2. Record the current TCP pose (the start) and print start and target.
-    3. Refuse to move if the start is farther than MAX_DIST from the target
-       or the target is outside the safety limits.
+    3. Refuse to move if the start is farther than MAX_DIST from the target,
+       the controller rejects the target, or the path fails the checks in
+       safety.py (active TCP, speed, plane and joint-limit margins).
     4. Wait for Enter.
     5. Open, move to TARGET, close, move back to the start.
 
@@ -25,6 +26,7 @@ from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
 
 import gripper as g
+import safety
 from show_pose import format_pose
 
 # ---------------------------------------------------------------------------
@@ -84,6 +86,11 @@ def main():
             try:
                 if not control.isPoseWithinSafetyLimits(TARGET):
                     raise SystemExit('Target is outside the safety limits')
+                # The return leg is the same line, so one check covers both moves
+                problems = safety.preflight(control, start, TARGET, q, SPEED)
+                if problems:
+                    raise SystemExit('Not moving:\n  ' + '\n  '.join(problems))
+                print()
                 input(f'Press Enter to move at {SPEED} m/s (Ctrl-C to abort) ')
 
                 grip(s, g.POS_OPEN)

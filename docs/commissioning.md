@@ -18,9 +18,13 @@ ForgeOS did not get far: it stayed stuck asking whether the robot was on. Rather
 
 The safety settings had been locked by the previous owner, and access was recovered.
 
-Two safety planes were defined from taught plane features. Joint position limits were then set and tested at low speed.
+Safety planes were defined from taught plane features. Joint position limits were then set and tested at low speed.
 
 The key finding was that on a CB3 the safety planes restrict only the TCP. The elbow, wrists and tool body can still cross a plane as long as the TCP does not. Joint position limits were therefore needed to protect the rest of the arm, not just as a backup to the planes.
+
+Our notes said there were two planes. When the installation was later exported to a USB stick and read on a computer, it showed three: `backwall`, `leftwall` and `Base`, a plane below the robot base. It also showed that only the shoulder joint is narrowed, to at most −51°, and only in Normal mode. The TCP (`rough_robotiq`, 165.8 mm) and the payload (1.8 kg) were then set for the 2F-85. The planes still check the 162.8 mm TCP that was active when they were defined.
+
+The installation file stores each plane as a normal and a distance, with no explicit "allowed side". Working through the taught feature points showed two things. First, the stored normal is the opposite of the feature's +Z, which points into the prohibited zone, so the stored normal points to the allowed side. Second, the stored distance already includes the displacement, which places each limit 10–90 mm beyond the taught points. These values now live in [`safety.py`](../scripts/safety.py), and the full table is in [setup.md](setup.md#safety-configuration).
 
 ## 4. The fieldbus error
 
@@ -71,4 +75,5 @@ Several things that looked necessary along the way turned out not to be:
 - **When a default-settings test fails, suspect physical contact before exotic settings.** The scans of addresses and baud rates were testing a bad connection.
 - **Identify connectors before ordering parts.** Photos and measurements would have ruled out the parts order straight away.
 - **Trust the pendant over notes.** The robot's real address was on the pendant, not in the notes.
+- **Read safety limits from an exported installation, not from memory.** The notes said two safety planes; the installation had three.
 - **Check mechanical stack-up and cable reach early,** not just the signal path. A working signal is of no use if the parts do not fit together or the cable does not reach.
