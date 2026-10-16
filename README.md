@@ -39,6 +39,7 @@ flowchart LR
 | `requirements.txt` | Python dependencies: `ur_rtde` and `pyserial`. |
 | `.gitignore` | Ignores Python artifacts, editor/OS files, robot backups, PolyScope programs and installations, and logs. |
 | `LICENSE` | MIT License. |
+| `CLAUDE.md` | Guidance for Claude Code: project context, git rules, documentation and hardware-safety requirements. |
 | [`scripts/`](scripts/) | Python control scripts. |
 | [`scripts/gripper.py`](scripts/gripper.py) | Minimal Modbus RTU driver for the Robotiq 2F-85: status, activate, open, close. Usable from the command line or as a module. |
 | [`scripts/pick_test.py`](scripts/pick_test.py) | Arm and gripper smoke test: activates the gripper, lifts the tool 2 cm, closes and opens the gripper, returns to the start pose. |
