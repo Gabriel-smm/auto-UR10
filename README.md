@@ -37,7 +37,7 @@ flowchart LR
 |---|---|
 | `README.md` | Project overview, hardware, architecture and quick usage. |
 | `requirements.txt` | Python dependencies: `ur_rtde` and `pyserial`. |
-| `.gitignore` | Ignores Python artifacts, editor/OS files, robot backups, PolyScope programs and installations, and logs. |
+| `.gitignore` | Ignores Python artifacts, editor/OS files, robot backups, PolyScope programs, installations and variables files, and logs. |
 | `LICENSE` | MIT License. |
 | `CLAUDE.md` | Guidance for Claude Code: project context, git rules, documentation and hardware-safety requirements. |
 | [`scripts/`](scripts/) | Python control scripts. |

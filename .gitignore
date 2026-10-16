@@ -27,6 +27,7 @@ backups/
 # PolyScope programs and installations
 *.urp
 *.installation
+*.variables
 
 # Logs
 logs/
