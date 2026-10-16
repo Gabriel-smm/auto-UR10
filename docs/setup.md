@@ -195,7 +195,7 @@ python scripts/pick_test.py
 It performs this sequence:
 
 1. Reads the gripper status (exits if the gripper does not answer) and activates it if needed.
-2. Records the current TCP pose.
+2. Records the current TCP pose and runs `safety.preflight` on the lift (see `pick_place.py` step 3). It exits without moving if any check fails.
 3. Opens the gripper, lifts the TCP 2 cm along base Z (`moveL` at 0.05 m/s, 0.1 m/s²), closes, then opens again.
 4. Returns to the start pose and prints the start and end TCP poses.
 5. Calls `stopScript()` to release the robot.
@@ -247,7 +247,10 @@ It performs this sequence:
 
 1. Reads the gripper status (exits if the gripper does not answer) and activates it if needed.
 2. Records the current TCP pose as the start, and prints the start, the target and the distance between them.
-3. Exits without moving if the start is more than `MAX_DIST` (1500 mm) from the target, or if `isPoseWithinSafetyLimits` rejects the target.
+3. Exits without moving if the start is more than `MAX_DIST` (1500 mm) from the target, if `isPoseWithinSafetyLimits` rejects the target, or if `safety.preflight` reports a problem. `preflight` checks the following, and prints the smallest plane margin and joint headroom along the path:
+   - the active TCP is `rough_robotiq` (165.8 mm);
+   - the speed is no higher than the Reduced-mode TCP limit (0.75 m/s);
+   - along the straight-line path, sampled at 50 points, the plane-checked point stays at least 30 mm inside every [safety plane](#safety-configuration), and every joint stays at least 3° from its limit (joint angles from the controller's inverse kinematics). The return leg follows the same line, so one check covers both moves.
 4. Waits for Enter (Ctrl-C aborts).
 5. Opens the gripper, moves to the target (`moveL` at 0.1 m/s, 0.15 m/s²), closes the gripper (prints `Object gripped` if it stopped on an object), and returns to the start.
 6. Prints the end pose and calls `stopScript()` to release the robot. The gripper stays closed.
@@ -284,6 +287,7 @@ As a module:
 | `joint_headroom(q)` | Distance (rad) from each joint to its nearer limit. |
 | `scan_move(start, target, q_start, ik)` | Smallest plane margin and joint headroom along a straight-line (`moveL`) move, sampled at `PATH_STEPS` points. Joint angles come from `ik`, for example `RTDEControlInterface.getInverseKinematics`. |
 | `check_move(start, target, q_start, ik)` | List of problems: any plane closer than `PLANE_MARGIN` (30 mm) or joint closer than `JOINT_MARGIN` (3°) along the path. |
+| `preflight(control, start, target, q_start, speed)` | What the motion scripts call before moving: checks the active TCP, the speed and `check_move`, prints the smallest margins, and returns the list of problems. |
 | `parse_installation(path)`, `compare(path)` | Read an exported installation; compare it with the constants. |
 
 ## Shutdown
@@ -305,6 +309,9 @@ As a module:
 | Gripper ignores open/close | Not activated since power-up | `python scripts/gripper.py activate` |
 | Fault `0x09` in status | No communication for more than 1 s | Normal at first contact; clears on the next request. |
 | Stray replies starting with `0x10` | A second device on the RS-485 line (likely the TeachMate electronics) | Harmless; replies are checked by CRC. |
+| `Not moving: path comes within … mm of safety plane …` | The straight-line path passes closer to a plane than `PLANE_MARGIN` (30 mm) | Choose a target or start further from the plane; watch the margins with `safety.py watch` while jogging. |
+| `Not moving: path takes … within …° of its limit` | A joint, usually the shoulder (max −51°), gets near its limit along the path | Start from a pose with the shoulder further from −51°, or choose another target. |
+| `Not moving: active TCP … is not rough_robotiq` | A different TCP is selected on the pendant | Select `rough_robotiq` in **Installation → TCP Configuration**. Do not change it from code. |
 | `safety.py compare` reports differences | The installation on the robot changed, or the wrong file was exported | Confirm the safety checksum on the pendant, then update the constants in `safety.py` and [Safety configuration](#safety-configuration) together. |
 
 > **Warning: unknown USB sticks.** Inspect any unknown USB stick on a computer first, never in the pendant. PolyScope automatically runs `urmagic_*.sh` files from a USB stick as root.

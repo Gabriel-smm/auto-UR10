@@ -27,7 +27,7 @@ flowchart LR
 ```
 
 - The **UR10 controller** keeps real-time control and enforces the safety limits (safety planes and joint position limits).
-- **`safety.py`** holds a copy of those limits and checks poses and paths against them, with a margin; see [Safety configuration](docs/setup.md#safety-configuration).
+- **`safety.py`** holds a copy of those limits. The motion scripts check every planned path against it, with a margin, before moving; see [Safety configuration](docs/setup.md#safety-configuration).
 - **`ur_rtde`** sends motion commands and reads the robot state.
 - **`gripper.py`** drives the gripper directly with Modbus RTU frames, without a URCap.
 - The cart's original Ready Robotics ForgeOS layer is not used; the robot runs on native PolyScope.

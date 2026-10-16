@@ -195,7 +195,10 @@ def scan_move(start, target, q_start=None, ik=None):
 
 def check_move(start, target, q_start=None, ik=None):
     """Problems (list of strings, empty if none) with a moveL from start to target."""
-    margins, headroom = scan_move(start, target, q_start, ik)
+    return problems_in(*scan_move(start, target, q_start, ik))
+
+
+def problems_in(margins, headroom):
     problems = [f'path comes within {m * 1000:.0f} mm of safety plane {name} '
                 f'(minimum {PLANE_MARGIN * 1000:.0f} mm)'
                 for name, m in margins if m < PLANE_MARGIN]
@@ -206,11 +209,30 @@ def check_move(start, target, q_start=None, ik=None):
 
 
 def format_scan(margins, headroom=None):
-    lines = ['  plane ' + '   '.join(f'{name} {m * 1000:.0f} mm' for name, m in margins)]
+    lines = ['Smallest along the path',
+             '  plane margin   ' + '   '.join(f'{name} {m * 1000:.0f} mm' for name, m in margins)]
     if headroom:
         name, h = min(headroom, key=lambda x: x[1])
-        lines.append(f'  joint headroom (smallest) {name} {math.degrees(h):.1f}°')
+        lines.append(f'  joint headroom {name} {math.degrees(h):.1f}°')
     return '\n'.join(lines)
+
+
+def preflight(control, start, target, q_start, speed):
+    """Checks before a moveL from start to target with an RTDEControlInterface.
+
+    Prints the smallest margins along the path and returns a list of
+    problems (empty if the move may go ahead).
+    """
+    tcp = list(control.getTCPOffset())
+    if differences(tcp, ACTIVE_TCP):
+        return [f'active TCP {tcp} is not rough_robotiq {ACTIVE_TCP}: '
+                'select it on the pendant (Installation > TCP Configuration)']
+    problems = []
+    if speed > REDUCED['tcp_speed']:
+        problems.append(f'speed {speed} m/s is above the Reduced-mode limit {REDUCED["tcp_speed"]} m/s')
+    margins, headroom = scan_move(start, target, q_start, control.getInverseKinematics)
+    print(format_scan(margins, headroom))
+    return problems + problems_in(margins, headroom)
 
 # ---------------------------------------------------------------------------
 # Installation file
