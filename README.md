@@ -27,6 +27,7 @@ flowchart LR
 ```
 
 - The **UR10 controller** keeps real-time control and enforces the safety limits (safety planes and joint position limits).
+- **`safety.py`** holds a copy of those limits and checks poses and paths against them, with a margin; see [Safety configuration](docs/setup.md#safety-configuration).
 - **`ur_rtde`** sends motion commands and reads the robot state.
 - **`gripper.py`** drives the gripper directly with Modbus RTU frames, without a URCap.
 - The cart's original Ready Robotics ForgeOS layer is not used; the robot runs on native PolyScope.
@@ -45,6 +46,7 @@ flowchart LR
 | [`scripts/pick_test.py`](scripts/pick_test.py) | Arm and gripper smoke test: activates the gripper, lifts the tool 2 cm, closes and opens the gripper, returns to the start pose. |
 | [`scripts/show_pose.py`](scripts/show_pose.py) | Read-only position readout: prints the TCP pose (mm, rotation vector, roll/pitch/yaw) and joint angles, once or continuously with `--watch`. |
 | [`scripts/pick_place.py`](scripts/pick_place.py) | Moves from the current position to a fixed target pose, closes the gripper, and returns to the start. |
+| [`scripts/safety.py`](scripts/safety.py) | The robot's safety configuration (planes, joint limits, TCP, payload) as constants, with path checks for the motion scripts, a live read-only margin display (`watch`), and a check of an exported `.installation` (`compare`). |
 | [`docs/`](docs/) | Lab documentation. |
 | [`docs/setup.md`](docs/setup.md) | Lab operating procedure: network and serial setup, safety checklist, start-up, shutdown, troubleshooting, Modbus reference. |
 | [`docs/commissioning.md`](docs/commissioning.md) | Engineering write-up of how the cell was brought back into service, including the wrong turns. |
@@ -61,6 +63,8 @@ python gripper.py activate    # after every power cycle; fingers open and close 
 python pick_test.py           # arm + gripper test
 python show_pose.py --watch   # live TCP pose and joint angles (read-only)
 python pick_place.py          # go to target pose, close gripper, return
+python safety.py show         # safety planes, joint limits, TCP and payload
+python safety.py watch        # live distance to planes and joint limits (read-only)
 ```
 
 Keep a hand on the emergency stop during any Python-commanded motion, and do not run a PolyScope program at the same time.
