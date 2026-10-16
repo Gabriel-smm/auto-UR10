@@ -9,7 +9,7 @@ The TCP pose is given in the base frame, in mm and as a rotation vector
 Command line:
     python show_pose.py                # print once
     python show_pose.py --watch        # refresh in place until Ctrl-C
-    python show_pose.py --watch --rate 10
+    python show_pose.py --watch --rate 2
     python show_pose.py --ip 192.168.0.1
 """
 
@@ -24,7 +24,7 @@ from rtde_receive import RTDEReceiveInterface
 # ---------------------------------------------------------------------------
 
 ROBOT_IP = '192.168.0.1'
-RATE = 5            # refresh rate in watch mode (Hz)
+RATE = 10           # refresh rate in watch mode (Hz)
 
 JOINTS = ['Base', 'Shoulder', 'Elbow', 'Wrist 1', 'Wrist 2', 'Wrist 3']
 

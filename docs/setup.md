@@ -154,7 +154,7 @@ Prints the robot's current position: the TCP pose in the base frame and the six 
 ```bash
 python scripts/show_pose.py                     # print once
 python scripts/show_pose.py --watch             # refresh in place until Ctrl-C
-python scripts/show_pose.py --watch --rate 10   # refresh rate in Hz (default 5)
+python scripts/show_pose.py --watch --rate 2    # refresh rate in Hz (default 10)
 python scripts/show_pose.py --ip 192.168.0.1    # robot IP (default 192.168.0.1)
 ```
 
