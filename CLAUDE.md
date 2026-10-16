@@ -28,6 +28,20 @@ Next goals: **RealSense D455 vision** (perception for picking) and **autonomous 
 - **Branches need approval.** Feature and task work goes on its own branch, but ask the user to authorize the branch and choose its name before creating it.
 - Never commit robot configuration backups, PolyScope programs or installations (`*.urp`, `*.installation`), or logs. These are already in `.gitignore`.
 
+### Pull request descriptions
+
+Use these sections, in this order:
+
+- **Stacking note** (only if the PR is based on another branch): which PR it depends on and that it retargets to `main` once that one merges.
+- **Summary**: one bullet per changed file or area, bold name first. Give the concrete values (limits, speeds, poses, checksums), not just "updated config". Include the docs that changed.
+- **Points to check on the pendant** (when relevant): anything that depends on robot-side configuration or that the code cannot confirm on its own.
+- **Test plan**: a checklist, grouped from least to most risky, each item naming the exact command and the expected result:
+  - `[ ] Offline:` checks that need no hardware (dry runs with stand-in objects, maths round-trips, deliberately injected failures that must be rejected).
+  - `[ ] Hardware, read-only:` RTDE receive-only or status checks, with what to compare against on the pendant.
+  - `[ ] Hardware:` motion runs, in the order to run them.
+
+  Tick an item only once it has actually passed. Hardware items are ticked after the user confirms the run, and passing them is when "unverified" notes in the docs get removed.
+
 ## Documentation is a core deliverable
 
 Technical documentation is as important as the code in this project. A task is not done until the docs reflect it.
