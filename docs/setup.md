@@ -205,9 +205,7 @@ Configured target (`TARGET`, base frame):
 |---|---|---|---|---|---|
 | -0.98 mm | 573.37 mm | -83.23 mm | -1.9014 rad | -2.3362 rad | -0.1152 rad |
 
-Both moves are straight lines in Cartesian space, so the path between the start and the target must be clear. To change the target, jog the robot to the new pose, read it with `python scripts/show_pose.py`, and enter it in `TARGET` in metres and radians.
-
-> **Unverified:** not yet run on the hardware.
+Both moves are straight lines in Cartesian space, so the path between the start and the target must be clear. To change the target, jog the robot to the new pose, read it with `python scripts/show_pose.py`, and paste its `Python:` line into `TARGET`.
 
 ## Shutdown
 
