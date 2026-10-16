@@ -1,0 +1,32 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual environments and packaging
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# Editors and OS files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Robot configuration backups (never commit)
+backups/
+*.zip
+
+# PolyScope programs and installations
+*.urp
+*.installation
+
+# Logs
+logs/

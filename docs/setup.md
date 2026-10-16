@@ -1,0 +1,196 @@
+# Lab setup and operating procedure
+
+How to set up and run the UR10 cell (UR10 on CB3, PolyScope 3.15.6, Ready Robotics TaskMate R10 cart, Robotiq 2F-85 gripper) from a control computer. For how the cell was brought back into service, see [commissioning.md](commissioning.md). For an overview of the project, see the [README](../README.md).
+
+## Contents
+
+- [Requirements](#requirements)
+- [Network configuration](#network-configuration)
+- [Gripper serial link](#gripper-serial-link)
+- [Required PolyScope configuration](#required-polyscope-configuration)
+- [Pre-session safety checklist](#pre-session-safety-checklist)
+- [Start-up procedure](#start-up-procedure)
+- [Running the scripts](#running-the-scripts)
+- [Shutdown](#shutdown)
+- [Troubleshooting](#troubleshooting)
+- [Reference: Modbus frames](#reference-modbus-frames)
+
+## Requirements
+
+- Python 3, with the dependencies installed from the repository root:
+
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+- A computer with an Ethernet port (for the robot) and a free USB port (for the gripper).
+
+## Network configuration
+
+| Device | Address |
+|---|---|
+| Robot | static `192.168.0.1`, mask `255.255.255.0` |
+| Control computer | static address on the same subnet, for example `192.168.0.20/24`, **no default gateway** |
+
+Leaving the gateway empty on the wired interface means internet traffic keeps going over Wi-Fi.
+
+Example with NetworkManager on Linux, where `<interface>` is the name of the computer's wired interface:
+
+```bash
+sudo nmcli con add type ethernet ifname <interface> con-name ur10 \
+  ipv4.method manual ipv4.addresses 192.168.0.20/24 ipv4.never-default yes
+sudo nmcli con up ur10
+ping -c 3 192.168.0.1
+```
+
+Always confirm the robot's IP on the pendant (**Setup Robot → Network**) rather than trusting written notes. If the two disagree, change the computer's settings, not the robot's.
+
+## Gripper serial link
+
+The gripper is reached over RS-485 through the USB-to-RS-485 adapter inside the cart base and the TeachMate.
+
+| Setting | Value |
+|---|---|
+| Protocol | Modbus RTU |
+| Slave address | 9 |
+| Serial | 115200 baud, 8N1 |
+| Port | detected automatically by `gripper.py`: `/dev/serial/by-id/*RS-485*`, falling back to `/dev/ttyUSB0` |
+| Position range (observed) | open ≈ 3, closed ≈ 228 of 255 |
+
+On Linux, add your user to the `dialout` group so the port can be used without `sudo`:
+
+```bash
+sudo usermod -aG dialout $USER
+```
+
+Log out and back in for the change to take effect.
+
+## Required PolyScope configuration
+
+- **Fieldbus off.** EtherNet/IP and PROFINET must be disabled in the **Installation** tab, and the installation saved as a new installation. Fieldbus settings left over from ForgeOS otherwise raise error `C207A0` and block RTDE.
+- **Safety boundaries.** Safety planes and joint position limits are configured as the cell's safety boundaries. On a CB3, safety planes restrict only the TCP, not the elbow, wrists or tool body, which is why joint limits are also needed.
+- **Payload and TCP.** These must match the tool actually mounted. If they are not set for the current tool, keep speeds low.
+
+## Pre-session safety checklist
+
+- [ ] Cart casters locked; floor flat and solid.
+- [ ] Reach envelope (about 1300 mm radius) clear of people and equipment.
+- [ ] Emergency stop located and tested.
+- [ ] Hair and loose clothing tied back; hands clear of the gripper (activation moves the fingers fully).
+
+## Start-up procedure
+
+1. Confirm the arm and cart are secure, then connect the robot cable and mains. Make sure the cart is powered on.
+2. Power on from the teach pendant and wait for boot (about 1 min).
+3. On the **Initialization** screen, check that payload and installation match the physical setup.
+4. Press **ON**: the robot goes to Idle. Press **START**: the brakes release.
+5. Optional: check motion with Freedrive or the **Move** tab.
+6. Connect the Ethernet and gripper USB cables to the control computer.
+7. Bring up the network and check the link: `ping 192.168.0.1`.
+8. Run `python scripts/gripper.py status`. A dictionary means the gripper is answering; `None` means no reply.
+9. Run `python scripts/gripper.py activate` if the gripper has been power-cycled.
+10. Run the script. Keep a hand on the emergency stop, start slow and small, and do not run a PolyScope program at the same time, because `RTDEControlInterface` takes over the robot while connected.
+
+## Running the scripts
+
+Run the commands from the repository root.
+
+### `scripts/gripper.py`
+
+Minimal Modbus RTU driver for the 2F-85, usable from the command line or as a module.
+
+```bash
+python scripts/gripper.py status     # default: print the status dict, or None if no reply
+python scripts/gripper.py activate   # reset, then activate; required after every power cycle
+python scripts/gripper.py open
+python scripts/gripper.py close
+```
+
+The status dictionary has the keys `act` (gACT), `goto` (gGTO), `sta` (gSTA), `obj` (gOBJ), `fault`, `pos` and `current`.
+
+As a module (with `scripts/` on the Python path):
+
+| Function | Purpose |
+|---|---|
+| `connect(port=PORT)` | Open the serial link (115200 baud, 0.3 s timeout). |
+| `status(s)` | Read the status registers; returns a dict, or `None` on no reply or bad CRC. |
+| `activate(s, secs=15)` | Reset, then activate; waits until gSTA = 3. The fingers open and close fully. |
+| `move(s, pos, speed=64, force=0, secs=8)` | Go to `pos` (0 = open, 255 = closed) and wait until the motion ends or an object is hit. |
+| `open_(s)`, `close(s)` | Shortcuts for `move` to `POS_OPEN` and `POS_CLOSED`. |
+| `write(s, action, pos, speed, force)` | Write the three output registers at `0x03E8`. |
+| `wait(s, test, secs)` | Poll the status until `test(status)` is true or time runs out. |
+| `frame(body)`, `crc(data)` | Build a Modbus frame: slave address + body + CRC-16. |
+
+```python
+import gripper as g
+s = g.connect()
+g.activate(s)
+print(g.close(s))
+s.close()
+```
+
+### `scripts/pick_test.py`
+
+Arm and gripper smoke test, run against the robot at `192.168.0.1`:
+
+```bash
+python scripts/pick_test.py
+```
+
+It performs this sequence:
+
+1. Reads the gripper status (exits if the gripper does not answer) and activates it if needed.
+2. Records the current TCP pose.
+3. Opens the gripper, lifts the TCP 2 cm along base Z (`moveL` at 0.05 m/s, 0.1 m/s²), closes, then opens again.
+4. Returns to the start pose and prints the start and end TCP poses.
+5. Calls `stopScript()` to release the robot.
+
+The end pose should match the start pose to within about 0.1 mm.
+
+## Shutdown
+
+1. Let scripts finish. They call `stopScript()` to release the robot.
+2. Use **Shutdown Robot** on the pendant. Never cut mains power directly.
+3. Disconnect the cables from the control computer.
+4. Power down before moving the cart.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `ping 192.168.0.1` fails | No IPv4 address on the wired interface, or wrong robot IP | Bring the connection up (`nmcli con up ur10`); confirm the IP on the pendant. |
+| Error `C207A0 Fieldbus input disconnected` | EtherNet/IP or PROFINET still enabled | Disable both, check MODBUS for unreachable devices, then **Save As** a new installation. |
+| RTDE control will not connect | A fieldbus adapter is claiming the RTDE inputs | Same fix as `C207A0`. |
+| `gripper.py status` returns `None` | Gripper plug not seated, cart not powered, or USB unplugged | Check the gripper LED (solid red = powered, no communication; blue = communicating). Reseat the gripper plug. Confirm the adapter with `lsusb` (`0403:6015`). |
+| `Permission denied` on the serial port | User not in `dialout` | `sudo usermod -aG dialout $USER`, then log out and in. |
+| Gripper ignores open/close | Not activated since power-up | `python scripts/gripper.py activate` |
+| Fault `0x09` in status | No communication for more than 1 s | Normal at first contact; clears on the next request. |
+| Stray replies starting with `0x10` | A second device on the RS-485 line (likely the TeachMate electronics) | Harmless; replies are checked by CRC. |
+
+> **Warning: unknown USB sticks.** Inspect any unknown USB stick on a computer first, never in the pendant. PolyScope automatically runs `urmagic_*.sh` files from a USB stick as root.
+
+## Reference: Modbus frames
+
+Hex, slave address 9. Checked against `gripper.frame()`.
+
+| Action | Frame |
+|---|---|
+| Read status | `09 03 07 D0 00 03 04 0E` |
+| Reset | `09 10 03 E8 00 03 06 00 00 00 00 00 00 73 30` |
+| Activate | `09 10 03 E8 00 03 06 01 00 00 00 00 00 72 E1` |
+| Close (full speed and force) | `09 10 03 E8 00 03 06 09 00 00 FF FF FF 42 29` |
+
+Status reply:
+
+```
+09 03 06 <status> 00 <fault> <pos request> <pos> <current> <crc>
+```
+
+Status byte bits:
+
+| Field | Bits | Meaning |
+|---|---|---|
+| gACT | 0 | Activation requested |
+| gGTO | 3 | Go-to requested |
+| gSTA | 4–5 | 3 = activation complete |
+| gOBJ | 6–7 | 3 = reached requested position; 2 = stopped on an object while closing |
