@@ -32,5 +32,6 @@ backups/
 # Logs
 logs/
 
-# Personal task list
+# Personal files: task list and Claude Code guidance
 docs/TODO.md
+CLAUDE.md
