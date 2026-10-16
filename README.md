@@ -43,6 +43,7 @@ flowchart LR
 | [`scripts/`](scripts/) | Python control scripts. |
 | [`scripts/gripper.py`](scripts/gripper.py) | Minimal Modbus RTU driver for the Robotiq 2F-85: status, activate, open, close. Usable from the command line or as a module. |
 | [`scripts/pick_test.py`](scripts/pick_test.py) | Arm and gripper smoke test: activates the gripper, lifts the tool 2 cm, closes and opens the gripper, returns to the start pose. |
+| [`scripts/show_pose.py`](scripts/show_pose.py) | Read-only position readout: prints the TCP pose (mm, rotation vector, roll/pitch/yaw) and joint angles, once or continuously with `--watch`. |
 | [`docs/`](docs/) | Lab documentation. |
 | [`docs/setup.md`](docs/setup.md) | Lab operating procedure: network and serial setup, safety checklist, start-up, shutdown, troubleshooting, Modbus reference. |
 | [`docs/commissioning.md`](docs/commissioning.md) | Engineering write-up of how the cell was brought back into service, including the wrong turns. |
@@ -57,6 +58,7 @@ pip install ur_rtde pyserial
 python gripper.py status      # check the gripper answers
 python gripper.py activate    # after every power cycle; fingers open and close fully
 python pick_test.py           # arm + gripper test
+python show_pose.py --watch   # live TCP pose and joint angles (read-only)
 ```
 
 Keep a hand on the emergency stop during any Python-commanded motion, and do not run a PolyScope program at the same time.

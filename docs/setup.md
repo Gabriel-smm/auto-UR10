@@ -147,6 +147,39 @@ It performs this sequence:
 
 The end pose should match the start pose to within about 0.1 mm.
 
+### `scripts/show_pose.py`
+
+Prints the robot's current position: the TCP pose in the base frame and the six joint angles. It is read-only: it uses `RTDEReceiveInterface` only, so it does not take over the robot and can run while jogging with Freedrive or the **Move** tab.
+
+```bash
+python scripts/show_pose.py                     # print once
+python scripts/show_pose.py --watch             # refresh in place until Ctrl-C
+python scripts/show_pose.py --watch --rate 10   # refresh rate in Hz (default 5)
+python scripts/show_pose.py --ip 192.168.0.1    # robot IP (default 192.168.0.1)
+```
+
+Example output:
+
+```
+TCP pose (base frame)
+  X   -123.45 mm    Rx   0.1234 rad    Roll   -179.99°
+  Y    456.78 mm    Ry  -3.1234 rad    Pitch    -0.90°
+  Z    321.00 mm    Rz   0.0012 rad    Yaw    -175.48°
+
+Joints
+  Base        12.34°   Shoulder   -90.00°   Elbow       85.10°
+  Wrist 1    -85.00°   Wrist 2    -90.00°   Wrist 3      0.00°
+```
+
+| Field | Unit | Notes |
+|---|---|---|
+| X, Y, Z | mm | TCP position in the base frame. |
+| Rx, Ry, Rz | rad | Rotation vector, the representation used by `ur_rtde` and the pendant. |
+| Roll, Pitch, Yaw | degrees | Computed from the rotation vector, UR convention R = Rz(yaw)·Ry(pitch)·Rx(roll). |
+| Joints | degrees | From `getActualQ()`. |
+
+> **Unverified:** the values have not yet been compared against the pendant's **Move** tab (Base feature) on the hardware. The RPY conversion is checked offline against known rotations only.
+
 ## Shutdown
 
 1. Let scripts finish. They call `stopScript()` to release the robot.
