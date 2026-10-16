@@ -165,6 +165,7 @@ TCP pose (base frame)
   X   -123.45 mm    Rx   0.1234 rad    Roll   -179.99°
   Y    456.78 mm    Ry  -3.1234 rad    Pitch    -0.90°
   Z    321.00 mm    Rz   0.0012 rad    Yaw    -175.48°
+  Python: [-0.12345, 0.45678, 0.32100, 0.1234, -3.1234, 0.0012]
 
 Joints
   Base        12.34°   Shoulder   -90.00°   Elbow       85.10°
@@ -176,6 +177,7 @@ Joints
 | X, Y, Z | mm | TCP position in the base frame. |
 | Rx, Ry, Rz | rad | Rotation vector, the representation used by `ur_rtde` and the pendant. |
 | Roll, Pitch, Yaw | degrees | Computed from the rotation vector, UR convention R = Rz(yaw)·Ry(pitch)·Rx(roll). |
+| Python | m, rad | The TCP pose as `[x, y, z, rx, ry, rz]`, the format `moveL` takes. Paste it directly into a script, for example as `TARGET` in `pick_place.py`. |
 | Joints | degrees | From `getActualQ()`. |
 
 > **Unverified:** the values have not yet been compared against the pendant's **Move** tab (Base feature) on the hardware. The RPY conversion is checked offline against known rotations only.
