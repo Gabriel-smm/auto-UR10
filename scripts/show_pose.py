@@ -70,6 +70,9 @@ def format_pose(tcp, q):
         lines.append(f'  {axis} {pos * 1000:9.2f} mm    '
                      f'{rot} {rot_val:8.4f} rad    '
                      f'{ang:<5} {ang_val:8.2f}°')
+    # Same units as moveL and TARGET in pick_place.py: m and rad
+    values = [f'{v:.5f}' for v in tcp[:3]] + [f'{v:.4f}' for v in tcp[3:]]
+    lines.append('  Python: [' + ', '.join(values) + ']')
 
     lines += ['', 'Joints']
     for i in range(0, len(JOINTS), 3):
