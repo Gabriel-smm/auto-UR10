@@ -30,3 +30,6 @@ backups/
 
 # Logs
 logs/
+
+# Personal task list
+docs/TODO.md

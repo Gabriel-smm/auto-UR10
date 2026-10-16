@@ -165,6 +165,7 @@ TCP pose (base frame)
   X   -123.45 mm    Rx   0.1234 rad    Roll   -179.99°
   Y    456.78 mm    Ry  -3.1234 rad    Pitch    -0.90°
   Z    321.00 mm    Rz   0.0012 rad    Yaw    -175.48°
+  Python: [-0.12345, 0.45678, 0.32100, 0.1234, -3.1234, 0.0012]
 
 Joints
   Base        12.34°   Shoulder   -90.00°   Elbow       85.10°
@@ -176,9 +177,35 @@ Joints
 | X, Y, Z | mm | TCP position in the base frame. |
 | Rx, Ry, Rz | rad | Rotation vector, the representation used by `ur_rtde` and the pendant. |
 | Roll, Pitch, Yaw | degrees | Computed from the rotation vector, UR convention R = Rz(yaw)·Ry(pitch)·Rx(roll). |
+| Python | m, rad | The TCP pose as `[x, y, z, rx, ry, rz]`, the format `moveL` takes. Paste it directly into a script, for example as `TARGET` in `pick_place.py`. |
 | Joints | degrees | From `getActualQ()`. |
 
 > **Unverified:** the values have not yet been compared against the pendant's **Move** tab (Base feature) on the hardware. The RPY conversion is checked offline against known rotations only.
+
+### `scripts/pick_place.py`
+
+Moves from the current position to a fixed target pose, closes the gripper, and returns to the start. Run against the robot at `192.168.0.1`:
+
+```bash
+python scripts/pick_place.py
+```
+
+It performs this sequence:
+
+1. Reads the gripper status (exits if the gripper does not answer) and activates it if needed.
+2. Records the current TCP pose as the start, and prints the start, the target and the distance between them.
+3. Exits without moving if the start is more than `MAX_DIST` (1500 mm) from the target, or if `isPoseWithinSafetyLimits` rejects the target.
+4. Waits for Enter (Ctrl-C aborts).
+5. Opens the gripper, moves to the target (`moveL` at 0.1 m/s, 0.15 m/s²), closes the gripper (prints `Object gripped` if it stopped on an object), and returns to the start.
+6. Prints the end pose and calls `stopScript()` to release the robot. The gripper stays closed.
+
+Configured target (`TARGET`, base frame):
+
+| X | Y | Z | Rx | Ry | Rz |
+|---|---|---|---|---|---|
+| -0.98 mm | 573.37 mm | -83.23 mm | -1.9014 rad | -2.3362 rad | -0.1152 rad |
+
+Both moves are straight lines in Cartesian space, so the path between the start and the target must be clear. To change the target, jog the robot to the new pose, read it with `python scripts/show_pose.py`, and paste its `Python:` line into `TARGET`.
 
 ## Shutdown
 
