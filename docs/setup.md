@@ -192,9 +192,9 @@ It performs this sequence:
 
 1. Reads the gripper status (exits if the gripper does not answer) and activates it if needed.
 2. Records the current TCP pose as the start, and prints the start, the target and the distance between them.
-3. Exits without moving if the start is more than `MAX_DIST` (600 mm) from the target, or if `isPoseWithinSafetyLimits` rejects the target.
+3. Exits without moving if the start is more than `MAX_DIST` (1500 mm) from the target, or if `isPoseWithinSafetyLimits` rejects the target.
 4. Waits for Enter (Ctrl-C aborts).
-5. Opens the gripper, moves to the target (`moveL` at 0.05 m/s, 0.1 m/s²), closes the gripper (prints `Object gripped` if it stopped on an object), and returns to the start.
+5. Opens the gripper, moves to the target (`moveL` at 0.1 m/s, 0.15 m/s²), closes the gripper (prints `Object gripped` if it stopped on an object), and returns to the start.
 6. Prints the end pose and calls `stopScript()` to release the robot. The gripper stays closed.
 
 Configured target (`TARGET`, base frame):

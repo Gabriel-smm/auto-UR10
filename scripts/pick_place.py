@@ -36,9 +36,9 @@ ROBOT_IP = '192.168.0.1'
 # Target TCP pose, base frame: x, y, z (m), rx, ry, rz (rotation vector, rad)
 TARGET = [-0.00098, 0.57337, -0.08323, -1.9014, -2.3362, -0.1152]
 
-SPEED = 0.05     # m/s
-ACCEL = 0.1      # m/s^2
-MAX_DIST = 0.6   # m, refuse to move if the start is farther than this
+SPEED = 0.1      # m/s
+ACCEL = 0.15     # m/s^2
+MAX_DIST = 1.5   # m, refuse to move if the start is farther than this
 
 # ---------------------------------------------------------------------------
 # Sequence
