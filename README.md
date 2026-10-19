@@ -49,6 +49,7 @@ flowchart LR
 | [`scripts/show_pose.py`](scripts/show_pose.py) | Read-only position readout: prints the TCP pose (mm, rotation vector, roll/pitch/yaw) and joint angles, once or continuously with `--watch`. |
 | [`scripts/pick_place.py`](scripts/pick_place.py) | Moves from the current position to a fixed target pose, closes the gripper, and returns to the start. |
 | [`scripts/safety.py`](scripts/safety.py) | The robot's safety configuration (planes, joint limits, TCP, payload) as constants, with path checks for the motion scripts, a live read-only margin display (`watch`), and a check of an exported `.installation` (`compare`). |
+| [`scripts/fake_gripper.py`](scripts/fake_gripper.py) | Stand-in for `gripper.py` for simulator runs: same functions and status keys, state in memory, close result set by a scenario (`wide`, `narrow`, none). Opens no port. |
 | [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
 | [`docs/`](docs/) | Lab documentation. |
 | [`docs/setup.md`](docs/setup.md) | Lab operating procedure: network and serial setup, safety checklist, start-up, shutdown, troubleshooting, Modbus reference. |

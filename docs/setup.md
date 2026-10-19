@@ -292,6 +292,44 @@ As a module:
 | `preflight(control, start, target, q_start, speed)` | What the motion scripts call before moving: checks the active TCP, the speed and `check_move`, prints the smallest margins, and returns the list of problems. |
 | `parse_installation(path)`, `compare(path)` | Read an exported installation; compare it with the constants. |
 
+### `scripts/fake_gripper.py`
+
+Stand-in for `gripper.py`, for runs against the [simulator](#simulation-ursim), which does not simulate the gripper. It has the same public functions and constants as `gripper.py` (`connect`, `status`, `activate`, `move`, `open_`, `close`, `write`, `wait`, `frame`, `crc`, `POS_OPEN`, `POS_CLOSED`, `STA_ACTIVATED`, …) and returns status dictionaries with the same keys. It keeps the gripper's state in memory: it opens no port and does not import `serial`.
+
+It follows the real gripper's status fields:
+
+- `connect()` returns a fresh gripper that is not activated, so every run activates it first.
+- `activate` reports gSTA = 1 for one poll, then 3. A move sent before activation is ignored, as on the real gripper.
+- A move reports gOBJ = 0 (moving) for one poll, then its result. Waits poll every 0.01 s, with no fixed delays.
+
+The result of a close depends on the scenario, the object between the fingers:
+
+| Object | `obj` | `pos` |
+|---|---|---|
+| `wide` | 2 (stopped on object) | 120 ± 2 |
+| `narrow` | 2 (stopped on object) | 205 ± 2 |
+| none | 3 (reached position) | 228 ± 2 |
+
+Opening gives `obj` 3 and `pos` 3 ± 2. The ± 2 is random noise (`NOISE`). `current` is always 0.
+
+> **Placeholders:** the `pos` values for `wide` and `narrow` are not measurements. They are to be replaced once the real blocks exist and have been gripped by the real gripper. The no-object 228 and open 3 are the [observed range](#gripper-serial-link).
+
+Setting the scenario:
+
+| From | Object | Seed |
+|---|---|---|
+| Code | `set_object('wide' \| 'narrow' \| None)` | `set_seed(n)` |
+| Command line | `UR10_SIM_OBJECT=wide\|narrow\|none` (default none) | `UR10_SIM_SEED=<integer>` (default unseeded) |
+
+The same seed gives the same positions, run after run. `set_object_source(fn)` replaces the fixed object with a function called at each close, so that a model of the cell (which slot the arm is at and what it holds) can drive the scenario later.
+
+```bash
+python scripts/fake_gripper.py status                                # fresh gripper, not activated
+UR10_SIM_OBJECT=wide UR10_SIM_SEED=1 python scripts/fake_gripper.py close
+```
+
+From the command line, `open` and `close` activate the fake gripper first, because each run starts a fresh one.
+
 ## Simulation (URSim)
 
 URSim is Universal Robots' offline simulator: the controller and PolyScope, with a simulated arm. It runs on the control computer in Docker and accepts the same `ur_rtde` connections as the robot, so scripts can be tried before they move the real arm.

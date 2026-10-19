@@ -68,7 +68,7 @@ Three things needed care:
 - **Docker needs the `docker` group.** Without it, every command fails with `permission denied` on `/var/run/docker.sock`. Adding the user to the group and logging in again fixes it.
 - **The simulator is newer than the robot.** The image reports PolyScope 3.15.8; the robot runs 3.15.6. Files therefore go one way only, robot to simulator: nothing the simulator saves goes back to the robot, and the robot is not updated to match.
 
-URSim simulates the arm and controller only. The gripper, objects and the camera are not part of it. Whether its stops and the motion scripts behave exactly as on the robot is still to be checked (see [setup.md](setup.md#simulation-ursim)).
+URSim simulates the arm and controller only. The gripper, objects and the camera are not part of it. For the gripper, [`fake_gripper.py`](../scripts/fake_gripper.py) stands in for the Modbus driver, with the same functions and status fields, and close results set by a scenario; its block positions are placeholders until the real blocks are made and measured. Whether its stops and the motion scripts behave exactly as on the robot is still to be checked (see [setup.md](setup.md#simulation-ursim)).
 
 ## 9. Result
 
