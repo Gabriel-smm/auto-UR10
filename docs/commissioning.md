@@ -58,7 +58,19 @@ The first ping to the robot failed for two separate reasons. First, the computer
 
 The first `ur_rtde` test was read-only: connect the receive interface and read the robot state, with no motion commands. After that, [`pick_test.py`](../scripts/pick_test.py) ran the first combined sequence: open the gripper, lift the TCP 2 cm, close, open, and return to the start pose. The TCP came back within about 0.1 mm of where it started.
 
-## 8. Result
+## 8. Simulation
+
+To try scripts without moving the arm, URSim, Universal Robots' offline simulator, was set up on the control laptop in Docker ([`ursim.sh`](../scripts/ursim.sh)). The CB3 image is pinned by digest. The robot's exported installation was loaded into it and showed the same safety checksum (`313597321`), TCP and payload, so the simulator enforces the same safety configuration as the robot.
+
+Three things needed care:
+
+- **The image simulates a UR5 by default.** It has to be started with `ROBOT_MODEL=UR10`, or poses, reach and the distances to the safety planes do not match the robot.
+- **Docker needs the `docker` group.** Without it, every command fails with `permission denied` on `/var/run/docker.sock`. Adding the user to the group and logging in again fixes it.
+- **The simulator is newer than the robot.** The image reports PolyScope 3.15.8; the robot runs 3.15.6. Files therefore go one way only, robot to simulator: nothing the simulator saves goes back to the robot, and the robot is not updated to match.
+
+URSim simulates the arm and controller only. The gripper, objects and the camera are not part of it. Whether its stops and the motion scripts behave exactly as on the robot is still to be checked (see [setup.md](setup.md#simulation-ursim)).
+
+## 9. Result
 
 The arm and the gripper are now controlled from one Python script: the arm over Ethernet with RTDE, the gripper over RS-485 through the adapter and wiring that were already in the cart. No parts were bought.
 
@@ -70,7 +82,7 @@ Several things that looked necessary along the way turned out not to be:
 - ForgeOS;
 - the Robotiq URCap, for computer-driven control.
 
-## 9. Lessons
+## 10. Lessons
 
 - **Test read-only first.** Read the state before sending any command, both for the robot and for the gripper.
 - **Status LEDs are a free diagnostic.** The gripper LED turning blue confirmed communication before any software did.
@@ -79,3 +91,4 @@ Several things that looked necessary along the way turned out not to be:
 - **Trust the pendant over notes.** The robot's real address was on the pendant, not in the notes.
 - **Read safety limits from an exported installation, not from memory.** The notes said two safety planes; the installation had three.
 - **Check mechanical stack-up and cable reach early,** not just the signal path. A working signal is of no use if the parts do not fit together or the cable does not reach.
+- **Make the simulator match the robot, not the other way round.** Set the model, load the robot's own installation and check its checksum. Never let files saved by a newer PolyScope flow back to the robot.

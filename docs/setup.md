@@ -12,6 +12,7 @@ How to set up and run the UR10 cell (UR10 on CB3, PolyScope 3.15.6, Ready Roboti
 - [Pre-session safety checklist](#pre-session-safety-checklist)
 - [Start-up procedure](#start-up-procedure)
 - [Running the scripts](#running-the-scripts)
+- [Simulation (URSim)](#simulation-ursim)
 - [Shutdown](#shutdown)
 - [Troubleshooting](#troubleshooting)
 - [Reference: Modbus frames](#reference-modbus-frames)
@@ -25,6 +26,7 @@ How to set up and run the UR10 cell (UR10 on CB3, PolyScope 3.15.6, Ready Roboti
   ```
 
 - A computer with an Ethernet port (for the robot) and a free USB port (for the gripper).
+- For the simulator only: Docker (see [Simulation (URSim)](#simulation-ursim)).
 
 ## Network configuration
 
@@ -290,6 +292,96 @@ As a module:
 | `preflight(control, start, target, q_start, speed)` | What the motion scripts call before moving: checks the active TCP, the speed and `check_move`, prints the smallest margins, and returns the list of problems. |
 | `parse_installation(path)`, `compare(path)` | Read an exported installation; compare it with the constants. |
 
+## Simulation (URSim)
+
+URSim is Universal Robots' offline simulator: the controller and PolyScope, with a simulated arm. It runs on the control computer in Docker and accepts the same `ur_rtde` connections as the robot, so scripts can be tried before they move the real arm.
+
+### Installing Docker
+
+On Pop!_OS (and other Ubuntu-based systems):
+
+```bash
+sudo apt install docker.io
+sudo usermod -aG docker $USER
+```
+
+Then log out and back in, or run `newgrp docker` in the current terminal. Without the group, every Docker command fails with `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`.
+
+### Starting the simulator
+
+```bash
+scripts/ursim.sh            # runs in the foreground
+docker stop ursim_cb3       # from another terminal, to stop it
+```
+
+[`scripts/ursim.sh`](../scripts/ursim.sh) starts the container with these settings:
+
+| Setting | Value |
+|---|---|
+| Image | `universalrobots/ursim_cb3`, pinned by digest `sha256:ecdab8a2ec1ec795466214f66596b162ae6d21cdc77c3a5c550cf40d753932a4` (pulled as `latest`) |
+| Robot model | `ROBOT_MODEL=UR10` |
+| Container name | `ursim_cb3`, removed when it stops (`--rm`) |
+| Programs folder | host `~/ursim/programs` (created if missing), mounted at `/ursim/programs` |
+| Ports | published on `127.0.0.1` only, see below |
+
+| Port | Use |
+|---|---|
+| 5900 | VNC |
+| 6080 | VNC in a browser |
+| 29999 | Dashboard Server |
+| 30001–30004 | script interfaces and RTDE, used by `ur_rtde` |
+
+The image is not committed. The digest in `ursim.sh` fixes the version. The programs folder stays outside the repository.
+
+**The image simulates a UR5 by default.** `ROBOT_MODEL=UR10` must be set, which `ursim.sh` does. A UR5 has a shorter reach and different link lengths, so poses, inverse kinematics and the distances to the safety planes would not match the robot.
+
+Open the simulated pendant in a browser at <http://localhost:6080/vnc.html?host=localhost&port=6080>. As on the robot, press **ON** on the **Initialization** screen, then **START** to release the brakes. The scripts need the simulated robot in this state, as on the real one.
+
+### Loading the installation
+
+Copy the exported installation from `backups/` into the simulator's programs folder:
+
+```bash
+cp backups/miniro_2safety.installation ~/ursim/programs/
+```
+
+Load it in the simulated PolyScope from `/ursim/programs` and check that it shows the same values as the robot:
+
+| Check | Expected |
+|---|---|
+| Safety checksum | `313597321` |
+| TCP | `rough_robotiq`, 165.8 mm along tool Z |
+| Payload | 1.8 kg |
+
+With this installation loaded, the simulator enforces the same safety configuration as the robot (see [Safety configuration](#safety-configuration)).
+
+### Versions and copying rule
+
+| | PolyScope |
+|---|---|
+| Robot | 3.15.6 |
+| Simulator | 3.15.8 |
+
+- **Files go one way only: robot → simulator.** Never copy an installation or program saved by the simulator (3.15.8) back to the robot (3.15.6).
+- **Do not update the robot's PolyScope** to match the simulator.
+
+### Running the scripts against the simulator
+
+Point the read-only scripts at the simulator with `--ip 127.0.0.1`:
+
+```bash
+python scripts/show_pose.py --ip 127.0.0.1 --watch
+python scripts/safety.py watch --ip 127.0.0.1
+```
+
+URSim does not simulate:
+
+- the gripper (it is on RS-485, not on the controller);
+- objects, contact or collisions with the cell;
+- the camera.
+
+> **Unverified:** that the simulated controller stops at the same plane margins that `safety.py watch` reports, and that `pick_test.py` and `pick_place.py` behave the same against the simulator as on the robot.
+
 ## Shutdown
 
 1. Let scripts finish. They call `stopScript()` to release the robot.
@@ -313,6 +405,9 @@ As a module:
 | `Not moving: path takes … within …° of its limit` | A joint, usually the shoulder (max −51°), gets near its limit along the path | Start from a pose with the shoulder further from −51°, or choose another target. |
 | `Not moving: active TCP … is not rough_robotiq` | A different TCP is selected on the pendant | Select `rough_robotiq` in **Installation → TCP Configuration**. Do not change it from code. |
 | `safety.py compare` reports differences | The installation on the robot changed, or the wrong file was exported | Confirm the safety checksum on the pendant, then update the constants in `safety.py` and [Safety configuration](#safety-configuration) together. |
+| `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock` | User not in the `docker` group | `sudo usermod -aG docker $USER`, then log out and in (or `newgrp docker`). |
+| The simulator shows a UR5 | Container started without `ROBOT_MODEL=UR10` | Stop it and start it with `scripts/ursim.sh`, which sets the model. |
+| `ur_rtde` cannot connect to `127.0.0.1` | Ports 30001–30004 not published, or the simulated robot is not powered on with the brakes released | Start the simulator with `scripts/ursim.sh`; in the simulated PolyScope press **ON**, then **START**. |
 
 > **Warning: unknown USB sticks.** Inspect any unknown USB stick on a computer first, never in the pendant. PolyScope automatically runs `urmagic_*.sh` files from a USB stick as root.
 
