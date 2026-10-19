@@ -116,7 +116,7 @@ Planes 3–7 and the tool orientation limit are disabled.
 - **Displacement.** `d` already includes the displacement. For each plane, `d` equals the taught surface's offset plus the displacement, so the limit sits 10, 20 and 90 mm beyond the taught points, **on the prohibited side**. If the taught points were on the physical wall and table, the checked point can reach past them by that much.
 - **Checked point.** The planes restrict a single point: the flange plus 162.8 mm along tool Z, which was the TCP active when the planes were defined. The active TCP is now 165.8 mm, so the checked point is 3 mm closer to the flange than the TCP that `getActualTCPPose()` reports.
 
-> **Unverified:** the margins computed by `safety.py` have not yet been compared against the pendant stopping the robot at a plane. Check this with `python scripts/safety.py watch` while jogging slowly toward a plane.
+Verified on the robot: the margins from `python scripts/safety.py watch` match where the pendant stops the robot at a plane.
 
 **Safety I/O**
 
@@ -235,7 +235,7 @@ Joints
 | Python | m, rad | The TCP pose as `[x, y, z, rx, ry, rz]`, the format `moveL` takes. Paste it directly into a script, for example as `TARGET` in `pick_place.py`. |
 | Joints | degrees | From `getActualQ()`. |
 
-> **Unverified:** the values have not yet been compared against the pendant's **Move** tab (Base feature) on the hardware. The RPY conversion is checked offline against known rotations only.
+Verified on the robot: the values match the pendant's **Move** tab (Base feature).
 
 ### `scripts/pick_place.py`
 

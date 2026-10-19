@@ -26,6 +26,8 @@ Our notes said there were two planes. When the installation was later exported t
 
 The installation file stores each plane as a normal and a distance, with no explicit "allowed side". Working through the taught feature points showed two things. First, the stored normal is the opposite of the feature's +Z, which points into the prohibited zone, so the stored normal points to the allowed side. Second, the stored distance already includes the displacement, which places each limit 10–90 mm beyond the taught points. These values now live in [`safety.py`](../scripts/safety.py), and the full table is in [setup.md](setup.md#safety-configuration).
 
+The software margins from `safety.py watch` and the pose readout from `show_pose.py` were later confirmed against the pendant: the margins match where the robot stops at a plane, and the pose matches the **Move** tab.
+
 ## 4. The fieldbus error
 
 With the safety configuration in place, programs failed with `C207A0 Fieldbus input disconnected`. The cause was EtherNet/IP and PROFINET, left enabled by the ForgeOS setup, waiting for a master that no longer existed. Disabling both in the Installation tab and saving a new installation cleared the error.
