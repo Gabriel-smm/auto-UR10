@@ -12,28 +12,35 @@ same time: RTDEControlInterface takes over the robot while connected.
 
 Run:
     python pick_test.py
+    python pick_test.py --sim     # simulator (URSim) at 127.0.0.1, fake gripper
 """
+
+import argparse
 
 from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
 
-import gripper as g
+import robot
 import safety
-
-ROBOT_IP = '192.168.0.1'
 
 LIFT = 0.02    # m, upward offset along base Z
 SPEED = 0.05   # m/s
 ACCEL = 0.1    # m/s^2
 
 
-def grip(s, pos):
+def grip(g, s, pos):
     st = g.move(s, pos)
     label = 'open:  ' if pos == g.POS_OPEN else 'closed:'
     print('gripper', label, st)
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Arm + gripper smoke test.')
+    robot.add_args(parser)
+    args = parser.parse_args()
+    ip, sim = robot.select(parser, args)
+    g = robot.gripper(sim)
+
     s = g.connect()
     try:
         st = g.status(s)
@@ -43,8 +50,8 @@ def main():
             print('Activating gripper: fingers will open and close fully')
             g.activate(s)
 
-        receive = RTDEReceiveInterface(ROBOT_IP)
-        control = RTDEControlInterface(ROBOT_IP)
+        receive = RTDEReceiveInterface(ip)
+        control = RTDEControlInterface(ip)
         try:
             start = receive.getActualTCPPose()
             up = list(start)
@@ -55,10 +62,10 @@ def main():
             if problems:
                 raise SystemExit('Not moving:\n  ' + '\n  '.join(problems))
 
-            grip(s, g.POS_OPEN)
+            grip(g, s, g.POS_OPEN)
             control.moveL(up, SPEED, ACCEL)
-            grip(s, g.POS_CLOSED)
-            grip(s, g.POS_OPEN)
+            grip(g, s, g.POS_CLOSED)
+            grip(g, s, g.POS_OPEN)
             control.moveL(start, SPEED, ACCEL)
 
             print('TCP end:  ', receive.getActualTCPPose())

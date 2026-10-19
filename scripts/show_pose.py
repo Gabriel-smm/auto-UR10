@@ -11,6 +11,7 @@ Command line:
     python show_pose.py --watch        # refresh in place until Ctrl-C
     python show_pose.py --watch --rate 2
     python show_pose.py --ip 192.168.0.1
+    python show_pose.py --sim          # simulator (URSim) at 127.0.0.1
 """
 
 import argparse
@@ -19,12 +20,13 @@ import time
 
 from rtde_receive import RTDEReceiveInterface
 
+import robot
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-ROBOT_IP = '192.168.0.1'
-RATE = 10           # refresh rate in watch mode (Hz)
+RATE = 10          # refresh rate in watch mode (Hz)
 
 JOINTS = ['Base', 'Shoulder', 'Elbow', 'Wrist 1', 'Wrist 2', 'Wrist 3']
 
@@ -94,10 +96,11 @@ def main():
     parser = argparse.ArgumentParser(description='Print the UR10 TCP pose and joint angles.')
     parser.add_argument('--watch', action='store_true', help='refresh in place until Ctrl-C')
     parser.add_argument('--rate', type=float, default=RATE, help=f'watch refresh rate in Hz (default {RATE})')
-    parser.add_argument('--ip', default=ROBOT_IP, help=f'robot IP (default {ROBOT_IP})')
+    robot.add_args(parser)
     args = parser.parse_args()
+    ip, _ = robot.select(parser, args)
 
-    receive = RTDEReceiveInterface(args.ip)
+    receive = RTDEReceiveInterface(ip)
     try:
         if not args.watch:
             print(read(receive))

@@ -12,7 +12,7 @@
 #     docker stop ursim_cb3         # from another terminal; --rm removes the container
 #
 # GUI: http://localhost:6080/vnc.html?host=localhost&port=6080
-# Then point the scripts at the simulator with --ip 127.0.0.1.
+# Press ON, then START, then run the scripts with --sim (127.0.0.1).
 
 set -euo pipefail
 
