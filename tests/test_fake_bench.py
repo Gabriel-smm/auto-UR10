@@ -22,6 +22,7 @@ def test_slot_at_nearest_within_tolerance(make_bench):
 def test_pos_for_width():
     assert fake_bench.pos_for(85) == POS_MIN
     assert fake_bench.pos_for(0) == POS_MAX
+    assert fake_bench.pos_for(73) == 67           # measured on the 2F-85
     assert fake_bench.pos_for(40) < fake_bench.pos_for(20)
 
 
@@ -75,15 +76,38 @@ def test_open_on_occupied_slot_or_away_drops(make_bench):
     assert [b['id'] for b in bench.lost] == ['a', 'b']
 
 
-def test_slip_after_leaving_pick_slot(make_bench):
+def test_silent_slip_after_leaving_pick_slot(make_bench):
     bench = make_bench(p_slip=1)
     assert bench.close(A[:3])[0] == OBJ_STOPPED
     assert bench.update(A[:3]) is None          # still at the slot: holding
-    assert bench.update(AWAY) == (OBJ_REACHED, POS_MAX)
+    assert bench.held is not None
+    assert bench.update(AWAY) is None           # falls, but the status does not change
     assert bench.held is None
-    assert [e['fault'] for e in bench.injected] == ['slip']
+    assert [(e['fault'], e['signal'], e['obj']) for e in bench.injected] == [('slip', 'silent', OBJ_STOPPED)]
     bench.open(C[:3])
     assert bench.blocks()['C'] is None
+
+
+def test_status_slip_changes_reading(make_bench):
+    bench = make_bench(p_slip=1, slip_signal='status')
+    bench.close(A[:3])
+    assert bench.update(AWAY) == (OBJ_REACHED, POS_MAX)
+    assert bench.held is None
+
+
+def test_slip_applies_on_open_without_polling(make_bench):
+    bench = make_bench(p_slip=1)
+    bench.close(A[:3])
+    bench.open(C[:3])                           # no update() on the way
+    assert bench.blocks()['C'] is None
+    assert [e['event'] for e in bench.events[-2:]] == ['slip', 'open']
+
+
+def test_slip_pending_but_released_at_pick_slot(make_bench):
+    bench = make_bench(p_slip=1)
+    bench.close(A[:3])
+    bench.open(A[:3])
+    assert bench.blocks()['A']['id'] == 'a' and not bench.injected
 
 
 def test_miss(make_bench):
@@ -143,6 +167,7 @@ def test_log_file(tmp_path, make_bench):
     ({'slots': {'bin': {'pose': BIN, 'bin': True, 'block': {'id': 'x', 'width_mm': 9}}}}, 'bin'),
     ({'faults': {'p_slp': 1}}, 'unknown faults'),
     ({'faults': {'p_slip': 2}}, 'p_slip'),
+    ({'slip_signal': 'loud'}, 'slip_signal'),
 ])
 def test_bad_scenarios_are_rejected(data, message):
     with pytest.raises(ValueError, match=message):

@@ -53,8 +53,18 @@ def test_pick_and_bin(gripper, tcp):
     assert [b['id'] for b in bench.binned] == ['a']
 
 
-def test_slip_shows_in_status(gripper, tcp):
+def test_silent_slip_leaves_status(gripper, tcp):
     bench, s = gripper(p_slip=1)
+    held = g.close(s)
+    tcp[:] = AWAY + [0, 0, 0]
+    st = g.status(s)
+    assert (st['obj'], st['pos']) == (held['obj'], held['pos'])
+    assert bench.held is None
+    assert [e['fault'] for e in bench.injected] == ['slip']
+
+
+def test_status_slip_shows_in_status(gripper, tcp):
+    bench, s = gripper(p_slip=1, slip_signal='status')
     assert g.close(s)['obj'] == 2
     assert g.status(s)['obj'] == 2         # still over the pick slot
     tcp[:] = AWAY + [0, 0, 0]

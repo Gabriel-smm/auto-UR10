@@ -322,7 +322,7 @@ Rejected with an error, before anything connects:
 
 Before connecting, it prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)`. Check this line before every motion run, especially when `UR10_SIM` may be set in the shell.
 
-With a scenario, it also prints `SCENARIO: <name>  seed <n>  log logs/<name>-<YYYYmmdd-HHMMSS>.jsonl`. `UR10_SIM_SEED=<n>` overrides the scenario's seed. The log holds the bench's events: a `start` line with the scenario name, seed, faults and initial blocks, then one line per close, open and slip, with any injected fault. `logs/` is not committed.
+With a scenario, it also prints `SCENARIO: <name>  seed <n>  log logs/<name>-<YYYYmmdd-HHMMSS>.jsonl`. `UR10_SIM_SEED=<n>` overrides the scenario's seed. The log holds the bench's events: a `start` line with the scenario name, seed, faults, slip signal and initial blocks, then one line per close, open and slip, with any injected fault. `logs/` is not committed.
 
 | Function | Purpose |
 |---|---|
@@ -361,7 +361,7 @@ Setting the scenario:
 
 The same seed gives the same positions, run after run. `set_object_source(fn)` replaces the fixed object with a function called at each close, so that a model of the cell (which slot the arm is at and what it holds) can drive the scenario later.
 
-`set_bench(bench, pose_fn=None)` hands the close and open results to a [simulated bench](#scriptsfake_benchpy) instead. At each move the fake gripper reads the TCP pose and asks the bench what it would feel there; while a block is held, each status poll also lets the bench apply a pending slip, which turns gOBJ to 3. `pose_fn()` returns the TCP pose; by default it is `getActualTCPPose()` from URSim at `127.0.0.1`, connected on first use and disconnected by `s.close()`. Tests pass their own `pose_fn`, so they need no URSim. With a bench set, the bench's seed decides everything and `NOISE` is not added. `set_bench(None)` returns to the fixed object.
+`set_bench(bench, pose_fn=None)` hands the close and open results to a [simulated bench](#scriptsfake_benchpy) instead. At each move the fake gripper reads the TCP pose and asks the bench what it would feel there; while a block is held, each status poll also lets the bench apply a pending slip, which changes the status only with `slip_signal` `status`. `pose_fn()` returns the TCP pose; by default it is `getActualTCPPose()` from URSim at `127.0.0.1`, connected on first use and disconnected by `s.close()`. Tests pass their own `pose_fn`, so they need no URSim. With a bench set, the bench's seed decides everything and `NOISE` is not added. `set_bench(None)` returns to the fixed object.
 
 ```bash
 python scripts/fake_gripper.py status                                # fresh gripper, not activated
@@ -380,23 +380,40 @@ The TCP is at a slot when it is within `TOL` (0.02 m) of the slot's pose; `slot_
 |---|---|---|
 | close at a slot with a block | 2, `pos_for(width_mm)` | block held |
 | close at an empty slot or away from any slot | 3, requested position (228 at most) | nothing held |
-| TCP leaves the pick slot with a slip pending | 3, 228 | block lost |
+| TCP leaves the pick slot with a slip pending | unchanged (`slip_signal` `silent`, default) or 3, 228 (`status`) | block lost |
 | open at an empty slot | 3, requested position (3 at least) | block placed there |
 | open at a bin slot | 3, as above | block gone (`binned`) |
 | open at an occupied slot or away from any slot | 3, as above | block dropped (`lost`) |
 
-`pos_for` is linear over the 2F-85 stroke: 85 mm at pos 3, 0 mm at pos 228.
+`pos_for` interpolates linearly between the points in `CALIBRATION`:
 
-> **Unverified:** the width-to-position line. It is to be replaced by measurements of the real blocks in the real gripper.
+| Width | pos | Source |
+|---|---|---|
+| 0 mm | 228 | assumed: closed on nothing (the observed no-object stop) |
+| 73 mm | 67 | measured on the 2F-85, `python gripper.py close` (force 0), 2026-10-20 |
+| 85 mm | 3 | assumed: fully open (the observed open stop) |
+
+A straight line from 85 mm at pos 3 to 0 mm at pos 228 would put 73 mm at pos 35, not the measured 67, so the relation is not linear over the stroke. Between the points the values are interpolations.
+
+> **Unverified:** every width other than 73 mm. Add a point to `CALIBRATION` for each real block measured.
 
 Faults, set per scenario, all drawn from one generator seeded by the scenario seed, so the same seed repeats the same run:
 
 | Fault | Meaning |
 |---|---|
-| `p_slip` | Probability that a picked block falls once the TCP leaves the pick slot. The status then changes to gOBJ 3, as the 2F-85 reports a lost object. |
+| `p_slip` | Probability that a picked block falls once the TCP leaves the pick slot. The slip also happens at the next open if no status poll applied it on the way; released at the pick slot itself, the block is put back instead. |
 | `p_miss` | Probability that a close at a full slot finds nothing (gOBJ 3); the block stays. |
 | `width_noise_mm` | Uniform ± noise added to the block width before converting to pos. |
 | `ghost_block` | Probability that a close on nothing reports an object (gOBJ 2, a 30 mm width); nothing is held. |
+
+`slip_signal` (top-level scenario key) sets what a slip does to the status:
+
+| `slip_signal` | Status after the block falls |
+|---|---|
+| `silent` (default) | Unchanged: gOBJ 2 and the pos of the block. The loss shows only at the next close or place. |
+| `status` | gOBJ 3, pos 228. For testing code that reacts to a status change. Not what the 2F-85 did at force 0. |
+
+The default follows a test on the real gripper (2026-10-20): `python gripper.py close` on a 73 mm object gave gOBJ 2, pos 67, current 0. The object was pulled out, and two `python gripper.py status` reads still gave gOBJ 2, pos 67. At force 0 the gripper keeps no holding current, so it cannot sense a lost object. Whether a force above 0 changes this has not been tested.
 
 Every close, open and slip is an event. Events with a `fault` field (`miss`, `slip`, `ghost`) are also kept in `bench.injected`. Given a log path, each event is written as one JSON line, starting with a `start` line that holds the scenario name, the seed, the faults and the initial blocks; every line carries the scenario name and seed.
 
@@ -408,7 +425,8 @@ Scenario file (JSON):
  "slots": {"A": {"block": {"id": "b1", "width_mm": 40}},
            "C": {},
            "bin": {"bin": true}},
- "faults": {"p_slip": 0.1}}
+ "faults": {"p_slip": 0.1},
+ "slip_signal": "silent"}
 ```
 
 An optional `"description"` is ignored by the code. Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`. Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
@@ -437,6 +455,7 @@ The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `
 | `single_B` | 1 | One wide block at B. | none |
 | `single_C` | 1 | One wide block at C. | none |
 | `slip_always` | 1 | Every picked block falls once the TCP leaves the slot. | `p_slip` 1 |
+| `slip_always_status` | 1 | As slip_always, but the status turns to gOBJ 3 when the block falls (not what the 2F-85 does at force 0). | `p_slip` 1, `slip_signal` status |
 | `slip_sometimes` | 1 | 30 % of picked blocks fall in transport. | `p_slip` 0.3 |
 | `wide_only` | 1 | Two 60 mm blocks. | none |
 | `width_noise_large` | 1 | Nominal bench with 5 mm width noise. | `width_noise_mm` 5 |
@@ -447,7 +466,7 @@ The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `
 | `load_scenario(path)`, `parse_scenario(data)` | Read and check a scenario. |
 | `Bench(scenario, seed=None, log_path=None)` | Bench state for one run; `seed` overrides the scenario's. |
 | `close(xyz, target)`, `open(xyz, target)` | Returns `(gOBJ, pos)` and updates the bench. |
-| `update(xyz)` | Applies a pending slip; returns the new `(gOBJ, pos)` or `None`. |
+| `update(xyz)` | Applies a pending slip; returns the new `(gOBJ, pos)` with `slip_signal` `status`, else `None`. |
 | `blocks()`, `binned`, `lost`, `events`, `injected`, `log_info()` | State for checks and logs. |
 
 ### Offline tests
@@ -549,7 +568,7 @@ The first line of output must read `TARGET: SIMULATOR (127.0.0.1)`. With `--sim`
 python scripts/pick_place.py --sim --scenario scenarios/nominal.json
 ```
 
-With `nominal.json`, a close at slot `A` reports gOBJ 2 and pos 122 (a 40 mm block); a close away from every slot reports gOBJ 3.
+With `nominal.json`, a close at slot `A` reports gOBJ 2 and pos 140 (a 40 mm block); a close away from every slot reports gOBJ 3.
 
 URSim does not simulate:
 

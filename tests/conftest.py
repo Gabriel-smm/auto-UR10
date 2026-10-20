@@ -16,7 +16,7 @@ BIN = [0.0, 0.64, 0.0, 0.0, 0.0, 0.0]
 AWAY = [0.0, 0.5, 0.3]
 
 
-def scenario(seed=1, **faults):
+def scenario(seed=1, slip_signal='silent', **faults):
     """A on the bench with a 40 mm block, B with a 20 mm block, C empty, and a bin."""
     return fake_bench.parse_scenario({
         'name': 'test', 'seed': seed,
@@ -24,9 +24,9 @@ def scenario(seed=1, **faults):
                   'B': {'pose': B, 'block': {'id': 'b', 'width_mm': 20}},
                   'C': {'pose': C},
                   'bin': {'pose': BIN, 'bin': True}},
-        'faults': faults})
+        'faults': faults, 'slip_signal': slip_signal})
 
 
 @pytest.fixture
 def make_bench():
-    return lambda seed=1, **faults: fake_bench.Bench(scenario(seed, **faults))
+    return lambda seed=1, **kw: fake_bench.Bench(scenario(seed, **kw))

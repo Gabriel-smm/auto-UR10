@@ -1,0 +1,28 @@
+{
+  "name": "slip_always_status",
+  "description": "As slip_always, but the status turns to gOBJ 3 when the block falls (not what the 2F-85 does at force 0).",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {
+    "p_slip": 1
+  },
+  "slip_signal": "status"
+}
