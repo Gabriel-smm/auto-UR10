@@ -70,6 +70,8 @@ Three things needed care:
 
 URSim simulates the arm and controller only. The gripper, objects and the camera are not part of it. For the gripper, [`fake_gripper.py`](../scripts/fake_gripper.py) stands in for the Modbus driver, with the same functions and status fields, and close results set by a scenario; its block positions are placeholders until the real blocks are made and measured. Whether its stops and the motion scripts behave exactly as on the robot is still to be checked (see [setup.md](setup.md#simulation-ursim)).
 
+For the blocks, [`fake_bench.py`](../scripts/fake_bench.py) keeps a bench in memory: slots at the taught poses in [`slots.json`](../scripts/slots.json), blocks with widths, and a bin. It turns a close or open at the TCP position into the gripper reading the real cell would give, so that pick-and-place logic which knows the blocks only through the gripper can run without the robot. Faults (slip, miss, width noise, ghost block) are injected from a seeded generator and logged, so a failing run can be repeated. The width-to-position line it uses is an assumption, linear over the 85 mm stroke, until the real blocks are measured.
+
 ## 9. Result
 
 The arm and the gripper are now controlled from one Python script: the arm over Ethernet with RTDE, the gripper over RS-485 through the adapter and wiring that were already in the cart. No parts were bought.

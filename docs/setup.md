@@ -364,6 +364,70 @@ UR10_SIM_OBJECT=wide UR10_SIM_SEED=1 python scripts/fake_gripper.py close
 
 From the command line, `open` and `close` activate the fake gripper first, because each run starts a fresh one.
 
+### `scripts/fake_bench.py`
+
+A simulated bench for simulator runs, because URSim has no blocks. It keeps named slots, each with a grip pose (base frame) and an optional block `{"id", "width_mm"}`, and answers what the gripper would report when it closes or opens at a TCP position. A slot can be a bin: a block released there is gone. The pick-and-place logic sees the blocks only through those gripper readings.
+
+The TCP is at a slot when it is within `TOL` (0.02 m) of the slot's pose; `slot_at(xyz)` returns the nearest such slot, or `None`.
+
+| Action at the TCP | Gripper reports (gOBJ, pos) | Bench |
+|---|---|---|
+| close at a slot with a block | 2, `pos_for(width_mm)` | block held |
+| close at an empty slot or away from any slot | 3, requested position (228 at most) | nothing held |
+| TCP leaves the pick slot with a slip pending | 3, 228 | block lost |
+| open at an empty slot | 3, requested position (3 at least) | block placed there |
+| open at a bin slot | 3, as above | block gone (`binned`) |
+| open at an occupied slot or away from any slot | 3, as above | block dropped (`lost`) |
+
+`pos_for` is linear over the 2F-85 stroke: 85 mm at pos 3, 0 mm at pos 228.
+
+> **Unverified:** the width-to-position line. It is to be replaced by measurements of the real blocks in the real gripper.
+
+Faults, set per scenario, all drawn from one generator seeded by the scenario seed, so the same seed repeats the same run:
+
+| Fault | Meaning |
+|---|---|
+| `p_slip` | Probability that a picked block falls once the TCP leaves the pick slot. The status then changes to gOBJ 3, as the 2F-85 reports a lost object. |
+| `p_miss` | Probability that a close at a full slot finds nothing (gOBJ 3); the block stays. |
+| `width_noise_mm` | Uniform ± noise added to the block width before converting to pos. |
+| `ghost_block` | Probability that a close on nothing reports an object (gOBJ 2, a 30 mm width); nothing is held. |
+
+Every close, open and slip is an event. Events with a `fault` field (`miss`, `slip`, `ghost`) are also kept in `bench.injected`. Given a log path, each event is written as one JSON line, starting with a `start` line that holds the scenario name, the seed, the faults and the initial blocks; every line carries the scenario name and seed.
+
+Scenario file (JSON):
+
+```json
+{"name": "nominal", "seed": 1,
+ "slots_file": "../scripts/slots.json",
+ "slots": {"A": {"block": {"id": "b1", "width_mm": 40}},
+           "C": {},
+           "bin": {"bin": true}},
+ "faults": {"p_slip": 0.1}}
+```
+
+Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`. Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
+
+```bash
+python scripts/fake_bench.py scenarios/nominal.json    # print a scenario
+```
+
+| Function | Purpose |
+|---|---|
+| `load_scenario(path)`, `parse_scenario(data)` | Read and check a scenario. |
+| `Bench(scenario, seed=None, log_path=None)` | Bench state for one run; `seed` overrides the scenario's. |
+| `close(xyz, target)`, `open(xyz, target)` | Returns `(gOBJ, pos)` and updates the bench. |
+| `update(xyz)` | Applies a pending slip; returns the new `(gOBJ, pos)` or `None`. |
+| `blocks()`, `binned`, `lost`, `events`, `injected`, `log_info()` | State for checks and logs. |
+
+### Offline tests
+
+The simulation stand-ins have `pytest` tests in [`tests/`](../tests/). They need no robot, no URSim and no gripper: the TCP position is a stand-in value. From the repository root:
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests -q
+```
+
 ## Simulation (URSim)
 
 URSim is Universal Robots' offline simulator: the controller and PolyScope, with a simulated arm. It runs on the control computer in Docker and accepts the same `ur_rtde` connections as the robot, so scripts can be tried before they move the real arm.
