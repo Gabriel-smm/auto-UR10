@@ -1,0 +1,27 @@
+{
+  "name": "slip_always",
+  "description": "Every picked block falls once the TCP leaves the slot.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {
+    "p_slip": 1
+  }
+}

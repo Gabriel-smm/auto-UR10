@@ -312,19 +312,23 @@ Chooses the target for every script that talks to the robot: the real UR10 or th
 | `--ip 127.0.0.1` or `--ip localhost` | simulator, `127.0.0.1` | `fake_gripper.py` |
 | environment `UR10_SIM=1` | simulator, `127.0.0.1` | `fake_gripper.py` |
 | `UR10_SIM=0` or unset | as if not set | |
+| `--scenario <file>` or `UR10_SIM_SCENARIO=<file>`, with the simulator | simulator | `fake_gripper.py` with a [bench](#scriptsfake_benchpy) for that scenario |
 
 Rejected with an error, before anything connects:
 
 - `--sim` or `UR10_SIM=1` with any other `--ip`, for example `--sim --ip 192.168.0.1`;
-- `UR10_SIM` set to anything other than `1`, `0` or empty.
+- `UR10_SIM` set to anything other than `1`, `0` or empty;
+- a scenario without the simulator, for example `--scenario scenarios/nominal.json` alone.
 
 Before connecting, it prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)`. Check this line before every motion run, especially when `UR10_SIM` may be set in the shell.
 
+With a scenario, it also prints `SCENARIO: <name>  seed <n>  log logs/<name>-<YYYYmmdd-HHMMSS>.jsonl`. `UR10_SIM_SEED=<n>` overrides the scenario's seed. The log holds the bench's events: a `start` line with the scenario name, seed, faults, slip signal and initial blocks, then one line per close, open and slip, with any injected fault. `logs/` is not committed.
+
 | Function | Purpose |
 |---|---|
-| `add_args(parser)` | Add `--sim` and `--ip` to an `argparse` parser. |
+| `add_args(parser)` | Add `--sim`, `--ip` and `--scenario` to an `argparse` parser. |
 | `select(parser, args)` | Apply the rules above, print the target, and return `(ip, sim)`. |
-| `gripper(sim)` | The gripper module for the target: `fake_gripper` or `gripper`. |
+| `gripper(sim, args=None)` | The gripper module for the target: `fake_gripper` or `gripper`. With a scenario in `args`, it gives the fake gripper a bench and opens the log. |
 
 ### `scripts/fake_gripper.py`
 
@@ -334,7 +338,7 @@ It follows the real gripper's status fields:
 
 - `connect()` returns a fresh gripper that is not activated, so every run activates it first.
 - `activate` reports gSTA = 1 for one poll, then 3. A move sent before activation is ignored, as on the real gripper.
-- A move reports gOBJ = 0 (moving) for one poll, then its result. Waits poll every 0.01 s, with no fixed delays.
+- A move reports gOBJ = 0 (moving) for at least one poll and `MOVE_TIME` (0.5 s), then its result, so that code polling the gripper sees a realistic delay. Set `fake_gripper.MOVE_TIME = 0` for instant moves. Waits poll every 0.01 s.
 
 The result of a close depends on the scenario, the object between the fingers:
 
@@ -357,12 +361,132 @@ Setting the scenario:
 
 The same seed gives the same positions, run after run. `set_object_source(fn)` replaces the fixed object with a function called at each close, so that a model of the cell (which slot the arm is at and what it holds) can drive the scenario later.
 
+`set_bench(bench, pose_fn=None)` hands the close and open results to a [simulated bench](#scriptsfake_benchpy) instead. At each move the fake gripper reads the TCP pose and asks the bench what it would feel there; while a block is held, each status poll also lets the bench apply a pending slip, which may change the status (see `slip_signal`). The force of a close is passed to the bench, which uses it to decide. `pose_fn()` returns the TCP pose; by default it is `getActualTCPPose()` from URSim at `127.0.0.1`, connected on first use and disconnected by `s.close()`. Tests pass their own `pose_fn`, so they need no URSim. With a bench set, the bench's seed decides everything and `NOISE` is not added. `set_bench(None)` returns to the fixed object.
+
 ```bash
 python scripts/fake_gripper.py status                                # fresh gripper, not activated
 UR10_SIM_OBJECT=wide UR10_SIM_SEED=1 python scripts/fake_gripper.py close
 ```
 
 From the command line, `open` and `close` activate the fake gripper first, because each run starts a fresh one.
+
+### `scripts/fake_bench.py`
+
+A simulated bench for simulator runs, because URSim has no blocks. It keeps named slots, each with a grip pose (base frame) and an optional block `{"id", "width_mm"}`, and answers what the gripper would report when it closes or opens at a TCP position. A slot can be a bin: a block released there is gone. The pick-and-place logic sees the blocks only through those gripper readings.
+
+The TCP is at a slot when it is within `TOL` (0.02 m) of the slot's pose; `slot_at(xyz)` returns the nearest such slot, or `None`.
+
+| Action at the TCP | Gripper reports (gOBJ, pos) | Bench |
+|---|---|---|
+| close at a slot with a block | 2, `pos_for(width_mm)` | block held |
+| close at an empty slot or away from any slot | 3, requested position (228 at most) | nothing held |
+| TCP leaves the pick slot with a slip pending | unchanged after a close at force 0; 3, 228 after a close with force (see `slip_signal`) | block lost |
+| open at an empty slot | 3, requested position (3 at least) | block placed there |
+| open at a bin slot | 3, as above | block gone (`binned`) |
+| open at an occupied slot or away from any slot | 3, as above | block dropped (`lost`) |
+
+`pos_for` interpolates linearly between the points in `CALIBRATION`:
+
+| Width | pos | Source |
+|---|---|---|
+| 0 mm | 228 | assumed: closed on nothing (the observed no-object stop) |
+| 73 mm | 67 | measured on the 2F-85, `python gripper.py close` (force 0), 2026-10-20 |
+| 85 mm | 3 | assumed: fully open (the observed open stop) |
+
+A straight line from 85 mm at pos 3 to 0 mm at pos 228 would put 73 mm at pos 35, not the measured 67, so the relation is not linear over the stroke. Between the points the values are interpolations.
+
+> **Unverified:** every width other than 73 mm. Add a point to `CALIBRATION` for each real block measured.
+
+Faults, set per scenario, all drawn from one generator seeded by the scenario seed, so the same seed repeats the same run:
+
+| Fault | Meaning |
+|---|---|
+| `p_slip` | Probability that a picked block falls once the TCP leaves the pick slot. The slip also happens at the next open if no status poll applied it on the way; released at the pick slot itself, the block is put back instead. |
+| `p_miss` | Probability that a close at a full slot finds nothing (gOBJ 3); the block stays. |
+| `width_noise_mm` | Uniform ± noise added to the block width before converting to pos. |
+| `ghost_block` | Probability that a close on nothing reports an object (gOBJ 2, a 30 mm width); nothing is held. |
+
+`slip_signal` (top-level scenario key) sets what a slip does to the status:
+
+| `slip_signal` | Status after the block falls |
+|---|---|
+| `auto` (default) | As measured on the 2F-85: unchanged if the block was gripped at force 0; gOBJ 3, pos 228 if it was gripped with force above 0. |
+| `silent` | Always unchanged: gOBJ 2 and the pos of the block. The loss shows only at the next close or place. |
+| `status` | Always gOBJ 3, pos 228. |
+
+`auto` follows two tests on the real gripper (2026-10-20), each closing on a 73 mm object, pulling it out by hand, then reading `python gripper.py status`:
+
+| Force | After the close | After the object was pulled out |
+|---|---|---|
+| 0 | gOBJ 2, pos 67, current 0 | gOBJ 2, pos 67: no change |
+| 100 | gOBJ 2, pos 67, current 5 | gOBJ 3, pos 228: the fingers closed fully |
+
+At force 0 the gripper keeps no holding current and cannot sense the loss; at force 100 it holds and closes on when the object leaves. The stop position was the same at both forces.
+
+> **Unverified:** forces other than 0 and 100. `auto` treats every force above 0 like 100.
+
+Every close, open and slip is an event. Events with a `fault` field (`miss`, `slip`, `ghost`) are also kept in `bench.injected`. Given a log path, each event is written as one JSON line, starting with a `start` line that holds the scenario name, the seed, the faults and the initial blocks; every line carries the scenario name and seed.
+
+Scenario file (JSON):
+
+```json
+{"name": "nominal", "seed": 1,
+ "slots_file": "../scripts/slots.json",
+ "slots": {"A": {"block": {"id": "b1", "width_mm": 40}},
+           "C": {},
+           "bin": {"bin": true}},
+ "faults": {"p_slip": 0.1},
+ "slip_signal": "silent"}
+```
+
+An optional `"description"` is ignored by the code. Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`. Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
+
+```bash
+python scripts/fake_bench.py scenarios/nominal.json    # print a scenario
+```
+
+The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `bin` from `slots.json`. The block widths (15 to 60 mm) are placeholders until the real blocks exist.
+
+| Scenario | Seed | Bench | Faults |
+|---|---|---|---|
+| `empty_bench` | 1 | Nothing on the bench: every close reports gOBJ 3. | none |
+| `full_bench` | 1 | Every slot holds a block; a place needs the bin or a freed slot. | none |
+| `ghost_always` | 1 | Empty bench, but every close on nothing reports an object. | `ghost_block` 1 |
+| `ghost_sometimes` | 1 | 30 % of closes on nothing report an object. | `ghost_block` 0.3 |
+| `miss_always` | 1 | Every close at a full slot finds nothing. | `p_miss` 1 |
+| `miss_sometimes` | 1 | 30 % of closes at a full slot miss. | `p_miss` 0.3 |
+| `mixed_faults_seed1` | 1 | All faults at once. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
+| `mixed_faults_seed2` | 2 | As mixed_faults_seed1, other seed. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
+| `mixed_faults_seed3` | 3 | As mixed_faults_seed1, other seed. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
+| `narrow_only` | 1 | Two 15 mm blocks. | none |
+| `nominal` | 1 | A wide block at A, a narrow one at B, C empty, no faults. | none |
+| `similar_widths` | 1 | 30 and 32 mm blocks with 2 mm noise: the widths overlap. | `width_noise_mm` 2 |
+| `single_A` | 1 | One wide block at A. | none |
+| `single_B` | 1 | One wide block at B. | none |
+| `single_C` | 1 | One wide block at C. | none |
+| `slip_always` | 1 | Every picked block falls once the TCP leaves the slot. | `p_slip` 1 |
+| `slip_always_status` | 1 | As slip_always, but the status turns to gOBJ 3 when the block falls (not what the 2F-85 does at force 0). | `p_slip` 1, `slip_signal` status |
+| `slip_sometimes` | 1 | 30 % of picked blocks fall in transport. | `p_slip` 0.3 |
+| `wide_only` | 1 | Two 60 mm blocks. | none |
+| `width_noise_large` | 1 | Nominal bench with 5 mm width noise. | `width_noise_mm` 5 |
+| `width_noise_small` | 1 | Nominal bench with 1 mm width noise. | `width_noise_mm` 1 |
+
+| Function | Purpose |
+|---|---|
+| `load_scenario(path)`, `parse_scenario(data)` | Read and check a scenario. |
+| `Bench(scenario, seed=None, log_path=None)` | Bench state for one run; `seed` overrides the scenario's. |
+| `close(xyz, target)`, `open(xyz, target)` | Returns `(gOBJ, pos)` and updates the bench. |
+| `update(xyz)` | Applies a pending slip; returns the new `(gOBJ, pos)` with `slip_signal` `status`, else `None`. |
+| `blocks()`, `binned`, `lost`, `events`, `injected`, `log_info()` | State for checks and logs. |
+
+### Offline tests
+
+The simulation stand-ins have `pytest` tests in [`tests/`](../tests/). They need no robot, no URSim and no gripper: the TCP position is a stand-in value. From the repository root:
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests -q
+```
 
 ## Simulation (URSim)
 
@@ -448,7 +572,13 @@ python scripts/pick_test.py --sim       # motion in the simulator; fake gripper
 python scripts/pick_place.py --sim
 ```
 
-The first line of output must read `TARGET: SIMULATOR (127.0.0.1)`. With `--sim` the motion scripts use [`fake_gripper.py`](#scriptsfake_gripperpy): the real gripper is not opened, even if it is plugged in. Set the object for a close with `UR10_SIM_OBJECT`, for example `UR10_SIM_OBJECT=wide python scripts/pick_place.py --sim`.
+The first line of output must read `TARGET: SIMULATOR (127.0.0.1)`. With `--sim` the motion scripts use [`fake_gripper.py`](#scriptsfake_gripperpy): the real gripper is not opened, even if it is plugged in. Set the object for a close with `UR10_SIM_OBJECT`, for example `UR10_SIM_OBJECT=wide python scripts/pick_place.py --sim`, or give a [bench scenario](#scriptsfake_benchpy) so that the result depends on where the TCP is:
+
+```bash
+python scripts/pick_place.py --sim --scenario scenarios/nominal.json
+```
+
+With `nominal.json`, a close at slot `A` reports gOBJ 2 and pos 140 (a 40 mm block); a close away from every slot reports gOBJ 3.
 
 URSim does not simulate:
 

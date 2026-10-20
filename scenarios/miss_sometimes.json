@@ -1,0 +1,27 @@
+{
+  "name": "miss_sometimes",
+  "description": "30 % of closes at a full slot miss.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {
+    "p_miss": 0.3
+  }
+}

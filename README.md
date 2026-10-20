@@ -40,7 +40,7 @@ flowchart LR
 | Path | Description |
 |---|---|
 | `README.md` | Project overview, hardware, architecture and quick usage. |
-| `requirements.txt` | Python dependencies: `ur_rtde` and `pyserial`. |
+| `requirements.txt` | Python dependencies: `ur_rtde`, `pyserial`, and `pytest` for the offline tests. |
 | `.gitignore` | Ignores Python artifacts, editor/OS files, robot backups, PolyScope programs, installations and variables files, and logs. |
 | `LICENSE` | MIT License. |
 | `CLAUDE.md` | Guidance for Claude Code: project context, git rules, documentation and hardware-safety requirements. |
@@ -52,7 +52,11 @@ flowchart LR
 | [`scripts/safety.py`](scripts/safety.py) | The robot's safety configuration (planes, joint limits, TCP, payload) as constants, with path checks for the motion scripts, a live read-only margin display (`watch`), and a check of an exported `.installation` (`compare`). |
 | [`scripts/robot.py`](scripts/robot.py) | Target selection shared by the robot scripts: `--sim`, `--ip` and `UR10_SIM=1`, the `TARGET:` banner, rejection of contradictions, and the choice of `gripper` or `fake_gripper`. |
 | [`scripts/fake_gripper.py`](scripts/fake_gripper.py) | Stand-in for `gripper.py` for simulator runs: same functions and status keys, state in memory, close result set by a scenario (`wide`, `narrow`, none). Opens no port. |
+| [`scripts/fake_bench.py`](scripts/fake_bench.py) | Simulated bench for simulator runs: named slots with grip poses and blocks, what the gripper reports on a close or open at the TCP position, and seeded fault injection (slip, miss, width noise, ghost block) logged as JSON lines. |
+| [`scripts/slots.json`](scripts/slots.json) | Taught TCP poses of the bench slots `A`, `B`, `C`, `bin` and `home` (base frame, m and rotation vector). |
 | [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
+| [`scenarios/`](scenarios/) | Bench scenarios for `fake_bench.py` (JSON): blocks per slot, seed and faults, from nominal runs to slips, misses and ghost blocks. |
+| [`tests/`](tests/) | Offline `pytest` tests for the simulation stand-ins; no robot, URSim or gripper needed. |
 | [`docs/`](docs/) | Lab documentation. |
 | [`docs/setup.md`](docs/setup.md) | Lab operating procedure: network and serial setup, safety checklist, start-up, shutdown, troubleshooting, Modbus reference. |
 | [`docs/commissioning.md`](docs/commissioning.md) | Engineering write-up of how the cell was brought back into service, including the wrong turns. |
@@ -84,6 +88,8 @@ python scripts/show_pose.py --sim                # read the simulated robot
 python scripts/safety.py watch --sim
 python scripts/pick_test.py --sim                 # simulated arm, fake gripper
 python scripts/pick_place.py --sim
+python scripts/pick_place.py --sim --scenario scenarios/nominal.json   # simulated blocks
+python -m pytest tests -q                         # offline tests, no robot or URSim
 ```
 
 Every robot script prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)` before connecting. Without `--sim`, the usage above is unchanged.

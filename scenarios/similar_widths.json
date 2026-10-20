@@ -1,0 +1,27 @@
+{
+  "name": "similar_widths",
+  "description": "30 and 32 mm blocks with 2 mm noise: the widths overlap.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "w30",
+        "width_mm": 30
+      }
+    },
+    "B": {
+      "block": {
+        "id": "w32",
+        "width_mm": 32
+      }
+    },
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {
+    "width_noise_mm": 2
+  }
+}

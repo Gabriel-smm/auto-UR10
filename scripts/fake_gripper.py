@@ -17,6 +17,12 @@ These positions are placeholders until measured on the real gripper with the
 real blocks. pos gets +-NOISE counts of random noise; set the seed for
 repeatable runs.
 
+With a bench (fake_bench.py) set, the bench decides instead, from the TCP
+position at the time of the move: what is in the slot there, and its width.
+The position comes from URSim (getActualTCPPose) or from a function passed in.
+
+A move reports gOBJ = 0 (moving) for MOVE_TIME seconds before its result.
+
 Command line (same commands as gripper.py):
     python fake_gripper.py status
     UR10_SIM_OBJECT=wide UR10_SIM_SEED=1 python fake_gripper.py close
@@ -25,6 +31,7 @@ As a module:
     import fake_gripper as g
     g.set_object('narrow')          # or None; set_object_source(fn) for a world model
     g.set_seed(1)
+    g.set_bench(bench)              # or set_bench(bench, pose_fn) without URSim
     s = g.connect()
     g.activate(s)
     print(g.close(s))
@@ -63,6 +70,7 @@ NOISE = 2           # +- counts added to pos
 STA_IN_PROGRESS = 1  # gSTA: activation in progress
 ACTIVATE_POLLS = 1   # status polls that report gSTA = 1 before activation completes
 MOVE_POLLS = 1       # status polls that report gOBJ = 0 (moving) before a move ends
+MOVE_TIME = 0.5      # s, at least this long before a move ends
 POLL = 0.01          # wait() poll interval (s)
 
 ENV_OBJECT = 'UR10_SIM_OBJECT'  # wide | narrow | none
@@ -102,6 +110,34 @@ def _noisy(pos):
     return max(0, min(255, pos + _rng.randint(-NOISE, NOISE)))
 
 
+def set_bench(bench, pose_fn=None):
+    """Take close and open results from a fake_bench.Bench (None: back to the object).
+
+    pose_fn() returns the TCP pose; by default it is read from URSim with
+    RTDEReceiveInterface, connected on first use.
+    """
+    global _bench, _pose
+    _bench, _pose = bench, pose_fn or _sim_pose
+
+
+def _sim_pose():
+    global _receive
+    if _receive is None:
+        from rtde_receive import RTDEReceiveInterface
+        from robot import SIM_IP
+        _receive = RTDEReceiveInterface(SIM_IP)
+    return _receive.getActualTCPPose()
+
+
+def _release_pose():
+    global _receive
+    if _receive is not None:
+        _receive.disconnect()
+        _receive = None
+
+
+_receive = None
+set_bench(None)
 set_object(os.environ.get(ENV_OBJECT))
 set_seed(int(os.environ[ENV_SEED]) if os.environ.get(ENV_SEED) else None)
 
@@ -119,9 +155,10 @@ class FakeLink:
         self.pos = POS_MIN
         self.polls = 0        # status polls that still report the old state
         self.result = None    # dict of fields to set when polls reach 0
+        self.done = 0.0       # time.time() before which a move is still running
 
     def close(self):
-        pass
+        _release_pose()
 
 
 def connect(port=PORT):
@@ -137,14 +174,20 @@ def write(s, action, pos=0, speed=0, force=0):
     elif action == ACT_ACTIVATE:
         s.act, s.sta = 1, STA_IN_PROGRESS
         s.polls, s.result = ACTIVATE_POLLS, {'sta': STA_ACTIVATED, 'pos': _noisy(POS_MIN)}
+        s.done = 0.0
     elif action == ACT_GOTO and s.sta == STA_ACTIVATED:
         # Like the real gripper, a move is ignored until activation is complete
         s.goto, s.obj = 1, OBJ_MOVING
-        s.polls, s.result = MOVE_POLLS, _move_result(pos)
+        s.polls, s.result = MOVE_POLLS, _move_result(s, pos, force)
+        s.done = time.time() + MOVE_TIME
     return frame(bytes([0x10, 0x03, 0xE8, 0x00, 0x03]))
 
 
-def _move_result(pos):
+def _move_result(s, pos, force):
+    if _bench:
+        xyz = _pose()[:3]
+        obj, stop = _bench.close(xyz, pos, force) if pos > s.pos else _bench.open(xyz, pos)
+        return {'obj': obj, 'pos': stop}
     obj, stop = SCENARIOS[_kind(_source())]
     if obj == OBJ_STOPPED and pos > stop:
         return {'obj': obj, 'pos': _noisy(stop)}
@@ -155,10 +198,14 @@ def status(s):
     """Advance the state by one poll and return it, as gripper.status does."""
     if s.polls:
         s.polls -= 1
-    elif s.result:
+    elif s.result and time.time() >= s.done:
         for key, value in s.result.items():
             setattr(s, key, value)
         s.result = None
+    elif _bench and _bench.slip_pending and not s.result:
+        lost = _bench.update(_pose()[:3])
+        if lost:
+            s.obj, s.pos = lost
     return {'act': s.act, 'goto': s.goto, 'sta': s.sta, 'obj': s.obj,
             'fault': s.fault, 'pos': s.pos, 'current': s.current}
 

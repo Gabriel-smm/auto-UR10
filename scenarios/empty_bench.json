@@ -1,0 +1,15 @@
+{
+  "name": "empty_bench",
+  "description": "Nothing on the bench: every close reports gOBJ 3.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {},
+    "B": {},
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}

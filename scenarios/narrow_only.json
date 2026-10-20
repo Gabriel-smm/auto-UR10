@@ -1,0 +1,25 @@
+{
+  "name": "narrow_only",
+  "description": "Two 15 mm blocks.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 15
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow2",
+        "width_mm": 15
+      }
+    },
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}

@@ -70,6 +70,11 @@ Three things needed care:
 
 URSim simulates the arm and controller only. The gripper, objects and the camera are not part of it. For the gripper, [`fake_gripper.py`](../scripts/fake_gripper.py) stands in for the Modbus driver, with the same functions and status fields, and close results set by a scenario; its block positions are placeholders until the real blocks are made and measured. Whether its stops and the motion scripts behave exactly as on the robot is still to be checked (see [setup.md](setup.md#simulation-ursim)).
 
+For the blocks, [`fake_bench.py`](../scripts/fake_bench.py) keeps a bench in memory: slots at the taught poses in [`slots.json`](../scripts/slots.json), blocks with widths, and a bin. It turns a close or open at the TCP position into the gripper reading the real cell would give, so that pick-and-place logic which knows the blocks only through the gripper can run without the robot. Faults (slip, miss, width noise, ghost block) are injected from a seeded generator and logged, so a failing run can be repeated. Two of its first assumptions were wrong when checked on the gripper:
+
+- **At force 0, a dropped object does not show in the status.** The bench first modelled a slip as the status turning to gOBJ 3. On the real 2F-85, closed with force 0 on a 73 mm object (gOBJ 2, pos 67, current 0), the object was pulled out and the status stayed gOBJ 2, pos 67. With no holding current the gripper cannot sense the loss. The same test at force 100 gave current 5 while holding, and when the object was pulled out the fingers closed fully and the status turned to gOBJ 3, pos 228, with the same stop position (67) as at force 0. The bench now chooses from the force of the close: silent at force 0, a status change with force. Gripping with force is what makes a dropped block detectable; `gripper.py` still closes at force 0 by default.
+- **Width is not linear in pos.** A straight line over the 85 mm stroke gave pos 35 for 73 mm; the gripper stopped at 67. The bench now interpolates in a calibration table that holds the measured point, and more points are to be added as blocks are measured.
+
 ## 9. Result
 
 The arm and the gripper are now controlled from one Python script: the arm over Ethernet with RTDE, the gripper over RS-485 through the adapter and wiring that were already in the cart. No parts were bought.

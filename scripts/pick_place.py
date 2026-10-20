@@ -36,7 +36,7 @@ from show_pose import format_pose
 # ---------------------------------------------------------------------------
 
 # Target TCP pose, base frame: x, y, z (m), rx, ry, rz (rotation vector, rad)
-TARGET = [-0.00098, 0.57337, -0.08323, -1.9014, -2.3362, -0.1152]
+TARGET = [0.00313, 0.43904, -0.06850, -1.5632, -2.7087, -0.0805]
 
 SPEED = 0.1      # m/s
 ACCEL = 0.15     # m/s^2
@@ -64,7 +64,7 @@ def main():
     robot.add_args(parser)
     args = parser.parse_args()
     ip, sim = robot.select(parser, args)
-    g = robot.gripper(sim)
+    g = robot.gripper(sim, args)
 
     s = g.connect()
     try:

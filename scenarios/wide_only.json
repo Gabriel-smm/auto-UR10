@@ -1,0 +1,25 @@
+{
+  "name": "wide_only",
+  "description": "Two 60 mm blocks.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 60
+      }
+    },
+    "B": {
+      "block": {
+        "id": "wide2",
+        "width_mm": 60
+      }
+    },
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}
