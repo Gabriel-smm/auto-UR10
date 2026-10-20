@@ -22,6 +22,7 @@ Command line:
     python safety.py compare ../backups/miniro_2safety.installation
     python safety.py watch                                      # live margins until Ctrl-C
     python safety.py watch --rate 2 --ip 192.168.0.1
+    python safety.py watch --sim                                # simulator (URSim) at 127.0.0.1
 
 As a module (from the motion scripts):
     problems = safety.check_move(start, target, q_start, ik=control.getInverseKinematics)
@@ -34,6 +35,8 @@ import math
 import sys
 import time
 import xml.etree.ElementTree as ET
+
+import robot
 
 # ---------------------------------------------------------------------------
 # Safety configuration (from the installation, CRC 313597321)
@@ -74,8 +77,7 @@ PLANE_MARGIN = 0.03               # m, refuse a path closer than this to a plane
 JOINT_MARGIN = math.radians(3)    # rad, refuse a path closer than this to a joint limit
 PATH_STEPS = 50                   # samples along a moveL path
 
-ROBOT_IP = '192.168.0.1'
-RATE = 10                         # watch refresh rate (Hz)
+RATE = 10                        # watch refresh rate (Hz)
 CLEAR = '\033[H\033[J'            # ANSI: cursor home, clear screen
 
 SAFETY_MODES = {1: 'NORMAL', 2: 'REDUCED', 3: 'PROTECTIVE_STOP', 4: 'RECOVERY',
@@ -372,13 +374,14 @@ def main():
     p.add_argument('path')
     p = sub.add_parser('watch', help='live plane margins and joint headroom (read-only)')
     p.add_argument('--rate', type=float, default=RATE, help=f'refresh rate in Hz (default {RATE})')
-    p.add_argument('--ip', default=ROBOT_IP, help=f'robot IP (default {ROBOT_IP})')
+    robot.add_args(p)
     args = parser.parse_args()
 
     if args.cmd == 'compare':
         sys.exit(1 if compare(args.path) else 0)
     elif args.cmd == 'watch':
-        watch(args.ip, args.rate)
+        ip, _ = robot.select(p, args)
+        watch(ip, args.rate)
     else:
         show()
 

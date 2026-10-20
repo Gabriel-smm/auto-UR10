@@ -24,6 +24,8 @@ flowchart LR
     CB3 --> ARM["UR10 arm"]
     G -- "USB → RS-485 · Modbus RTU" --> TM["TeachMate"]
     TM --> GR["Robotiq 2F-85"]
+    R -. "--sim · localhost · RTDE" .-> SIM["URSim UR10 (Docker)"]
+    S -. "--sim" .-> FG["fake_gripper.py"]
 ```
 
 - The **UR10 controller** keeps real-time control and enforces the safety limits (safety planes and joint position limits).
@@ -31,6 +33,7 @@ flowchart LR
 - **`ur_rtde`** sends motion commands and reads the robot state.
 - **`gripper.py`** drives the gripper directly with Modbus RTU frames, without a URCap.
 - The cart's original Ready Robotics ForgeOS layer is not used; the robot runs on native PolyScope.
+- **URSim**, Universal Robots' simulator, runs as a simulated UR10 in Docker on the control computer, with the robot's installation loaded, so `ur_rtde` scripts can be tried on `127.0.0.1` before the real arm. With `--sim`, **`robot.py`** points the scripts at it and swaps in **`fake_gripper.py`** for the gripper; see [Simulation (URSim)](docs/setup.md#simulation-ursim).
 
 ## Repository
 
@@ -47,6 +50,9 @@ flowchart LR
 | [`scripts/show_pose.py`](scripts/show_pose.py) | Read-only position readout: prints the TCP pose (mm, rotation vector, roll/pitch/yaw) and joint angles, once or continuously with `--watch`. |
 | [`scripts/pick_place.py`](scripts/pick_place.py) | Moves from the current position to a fixed target pose, closes the gripper, and returns to the start. |
 | [`scripts/safety.py`](scripts/safety.py) | The robot's safety configuration (planes, joint limits, TCP, payload) as constants, with path checks for the motion scripts, a live read-only margin display (`watch`), and a check of an exported `.installation` (`compare`). |
+| [`scripts/robot.py`](scripts/robot.py) | Target selection shared by the robot scripts: `--sim`, `--ip` and `UR10_SIM=1`, the `TARGET:` banner, rejection of contradictions, and the choice of `gripper` or `fake_gripper`. |
+| [`scripts/fake_gripper.py`](scripts/fake_gripper.py) | Stand-in for `gripper.py` for simulator runs: same functions and status keys, state in memory, close result set by a scenario (`wide`, `narrow`, none). Opens no port. |
+| [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
 | [`docs/`](docs/) | Lab documentation. |
 | [`docs/setup.md`](docs/setup.md) | Lab operating procedure: network and serial setup, safety checklist, start-up, shutdown, troubleshooting, Modbus reference. |
 | [`docs/commissioning.md`](docs/commissioning.md) | Engineering write-up of how the cell was brought back into service, including the wrong turns. |
@@ -68,6 +74,19 @@ python safety.py watch        # live distance to planes and joint limits (read-o
 ```
 
 Keep a hand on the emergency stop during any Python-commanded motion, and do not run a PolyScope program at the same time.
+
+Simulator (Docker required; see [Simulation (URSim)](docs/setup.md#simulation-ursim)):
+
+```bash
+scripts/ursim.sh                                  # start URSim as a UR10
+# GUI: http://localhost:6080/vnc.html?host=localhost&port=6080 → ON, START
+python scripts/show_pose.py --sim                # read the simulated robot
+python scripts/safety.py watch --sim
+python scripts/pick_test.py --sim                 # simulated arm, fake gripper
+python scripts/pick_place.py --sim
+```
+
+Every robot script prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)` before connecting. Without `--sim`, the usage above is unchanged.
 
 ## Background
 

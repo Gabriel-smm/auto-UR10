@@ -12,6 +12,7 @@ How to set up and run the UR10 cell (UR10 on CB3, PolyScope 3.15.6, Ready Roboti
 - [Pre-session safety checklist](#pre-session-safety-checklist)
 - [Start-up procedure](#start-up-procedure)
 - [Running the scripts](#running-the-scripts)
+- [Simulation (URSim)](#simulation-ursim)
 - [Shutdown](#shutdown)
 - [Troubleshooting](#troubleshooting)
 - [Reference: Modbus frames](#reference-modbus-frames)
@@ -25,6 +26,7 @@ How to set up and run the UR10 cell (UR10 on CB3, PolyScope 3.15.6, Ready Roboti
   ```
 
 - A computer with an Ethernet port (for the robot) and a free USB port (for the gripper).
+- For the simulator only: Docker (see [Simulation (URSim)](#simulation-ursim)).
 
 ## Network configuration
 
@@ -116,7 +118,7 @@ Planes 3–7 and the tool orientation limit are disabled.
 - **Displacement.** `d` already includes the displacement. For each plane, `d` equals the taught surface's offset plus the displacement, so the limit sits 10, 20 and 90 mm beyond the taught points, **on the prohibited side**. If the taught points were on the physical wall and table, the checked point can reach past them by that much.
 - **Checked point.** The planes restrict a single point: the flange plus 162.8 mm along tool Z, which was the TCP active when the planes were defined. The active TCP is now 165.8 mm, so the checked point is 3 mm closer to the flange than the TCP that `getActualTCPPose()` reports.
 
-> **Unverified:** the margins computed by `safety.py` have not yet been compared against the pendant stopping the robot at a plane. Check this with `python scripts/safety.py watch` while jogging slowly toward a plane.
+Verified on the robot: the margins from `python scripts/safety.py watch` match where the pendant stops the robot at a plane.
 
 **Safety I/O**
 
@@ -149,6 +151,8 @@ Planes 3–7 and the tool orientation limit are disabled.
 ## Running the scripts
 
 Run the commands from the repository root.
+
+The scripts that talk to the robot (`pick_test.py`, `pick_place.py`, `show_pose.py`, `safety.py watch`) target the real robot at `192.168.0.1` by default. They also take `--sim` to target the [simulator](#simulation-ursim) instead, and print the target before connecting (see [`scripts/robot.py`](#scriptsrobotpy)).
 
 ### `scripts/gripper.py`
 
@@ -190,6 +194,7 @@ Arm and gripper smoke test, run against the robot at `192.168.0.1`:
 
 ```bash
 python scripts/pick_test.py
+python scripts/pick_test.py --sim     # simulator at 127.0.0.1, with fake_gripper.py
 ```
 
 It performs this sequence:
@@ -211,7 +216,10 @@ python scripts/show_pose.py                     # print once
 python scripts/show_pose.py --watch             # refresh in place until Ctrl-C
 python scripts/show_pose.py --watch --rate 2    # refresh rate in Hz (default 10)
 python scripts/show_pose.py --ip 192.168.0.1    # robot IP (default 192.168.0.1)
+python scripts/show_pose.py --sim               # simulator at 127.0.0.1
 ```
+
+The first line of output is the target, `TARGET: REAL ROBOT (192.168.0.1)` or `TARGET: SIMULATOR (127.0.0.1)`.
 
 Example output:
 
@@ -235,7 +243,7 @@ Joints
 | Python | m, rad | The TCP pose as `[x, y, z, rx, ry, rz]`, the format `moveL` takes. Paste it directly into a script, for example as `TARGET` in `pick_place.py`. |
 | Joints | degrees | From `getActualQ()`. |
 
-> **Unverified:** the values have not yet been compared against the pendant's **Move** tab (Base feature) on the hardware. The RPY conversion is checked offline against known rotations only.
+Verified on the robot: the values match the pendant's **Move** tab (Base feature).
 
 ### `scripts/pick_place.py`
 
@@ -243,6 +251,7 @@ Moves from the current position to a fixed target pose, closes the gripper, and 
 
 ```bash
 python scripts/pick_place.py
+python scripts/pick_place.py --sim    # simulator at 127.0.0.1, with fake_gripper.py
 ```
 
 It performs this sequence:
@@ -274,6 +283,7 @@ python scripts/safety.py show                                        # print the
 python scripts/safety.py compare backups/miniro_2safety.installation # check an exported installation
 python scripts/safety.py watch                                       # live plane margins and joint headroom
 python scripts/safety.py watch --rate 2 --ip 192.168.0.1
+python scripts/safety.py watch --sim                                 # simulator at 127.0.0.1
 ```
 
 - `compare` reads the safety settings, the active TCP and the payload from the gzipped XML of a `.installation` file. It prints the safety checksum and every value that differs from the constants. The exit status is 1 if anything differs.
@@ -289,6 +299,164 @@ As a module:
 | `check_move(start, target, q_start, ik)` | List of problems: any plane closer than `PLANE_MARGIN` (30 mm) or joint closer than `JOINT_MARGIN` (3°) along the path. |
 | `preflight(control, start, target, q_start, speed)` | What the motion scripts call before moving: checks the active TCP, the speed and `check_move`, prints the smallest margins, and returns the list of problems. |
 | `parse_installation(path)`, `compare(path)` | Read an exported installation; compare it with the constants. |
+
+### `scripts/robot.py`
+
+Chooses the target for every script that talks to the robot: the real UR10 or the [simulator](#simulation-ursim). It is a module, not a command.
+
+| Input | Target | Gripper module |
+|---|---|---|
+| nothing | real robot, `192.168.0.1` | `gripper.py` |
+| `--ip <address>` | real robot at that address | `gripper.py` |
+| `--sim` | simulator, `127.0.0.1` | `fake_gripper.py` |
+| `--ip 127.0.0.1` or `--ip localhost` | simulator, `127.0.0.1` | `fake_gripper.py` |
+| environment `UR10_SIM=1` | simulator, `127.0.0.1` | `fake_gripper.py` |
+| `UR10_SIM=0` or unset | as if not set | |
+
+Rejected with an error, before anything connects:
+
+- `--sim` or `UR10_SIM=1` with any other `--ip`, for example `--sim --ip 192.168.0.1`;
+- `UR10_SIM` set to anything other than `1`, `0` or empty.
+
+Before connecting, it prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)`. Check this line before every motion run, especially when `UR10_SIM` may be set in the shell.
+
+| Function | Purpose |
+|---|---|
+| `add_args(parser)` | Add `--sim` and `--ip` to an `argparse` parser. |
+| `select(parser, args)` | Apply the rules above, print the target, and return `(ip, sim)`. |
+| `gripper(sim)` | The gripper module for the target: `fake_gripper` or `gripper`. |
+
+### `scripts/fake_gripper.py`
+
+Stand-in for `gripper.py`, used by the motion scripts with `--sim`, because the [simulator](#simulation-ursim) does not simulate the gripper. It has the same public functions and constants as `gripper.py` (`connect`, `status`, `activate`, `move`, `open_`, `close`, `write`, `wait`, `frame`, `crc`, `POS_OPEN`, `POS_CLOSED`, `STA_ACTIVATED`, …) and returns status dictionaries with the same keys. It keeps the gripper's state in memory: it opens no port and does not import `serial`.
+
+It follows the real gripper's status fields:
+
+- `connect()` returns a fresh gripper that is not activated, so every run activates it first.
+- `activate` reports gSTA = 1 for one poll, then 3. A move sent before activation is ignored, as on the real gripper.
+- A move reports gOBJ = 0 (moving) for one poll, then its result. Waits poll every 0.01 s, with no fixed delays.
+
+The result of a close depends on the scenario, the object between the fingers:
+
+| Object | `obj` | `pos` |
+|---|---|---|
+| `wide` | 2 (stopped on object) | 120 ± 2 |
+| `narrow` | 2 (stopped on object) | 205 ± 2 |
+| none | 3 (reached position) | 228 ± 2 |
+
+Opening gives `obj` 3 and `pos` 3 ± 2. The ± 2 is random noise (`NOISE`). `current` is always 0.
+
+> **Placeholders:** the `pos` values for `wide` and `narrow` are not measurements. They are to be replaced once the real blocks exist and have been gripped by the real gripper. The no-object 228 and open 3 are the [observed range](#gripper-serial-link).
+
+Setting the scenario:
+
+| From | Object | Seed |
+|---|---|---|
+| Code | `set_object('wide' \| 'narrow' \| None)` | `set_seed(n)` |
+| Command line | `UR10_SIM_OBJECT=wide\|narrow\|none` (default none) | `UR10_SIM_SEED=<integer>` (default unseeded) |
+
+The same seed gives the same positions, run after run. `set_object_source(fn)` replaces the fixed object with a function called at each close, so that a model of the cell (which slot the arm is at and what it holds) can drive the scenario later.
+
+```bash
+python scripts/fake_gripper.py status                                # fresh gripper, not activated
+UR10_SIM_OBJECT=wide UR10_SIM_SEED=1 python scripts/fake_gripper.py close
+```
+
+From the command line, `open` and `close` activate the fake gripper first, because each run starts a fresh one.
+
+## Simulation (URSim)
+
+URSim is Universal Robots' offline simulator: the controller and PolyScope, with a simulated arm. It runs on the control computer in Docker and accepts the same `ur_rtde` connections as the robot, so scripts can be tried before they move the real arm.
+
+### Installing Docker
+
+On Pop!_OS (and other Ubuntu-based systems):
+
+```bash
+sudo apt install docker.io
+sudo usermod -aG docker $USER
+```
+
+Then log out and back in, or run `newgrp docker` in the current terminal. Without the group, every Docker command fails with `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`.
+
+### Starting the simulator
+
+```bash
+scripts/ursim.sh            # runs in the foreground
+docker stop ursim_cb3       # from another terminal, to stop it
+```
+
+[`scripts/ursim.sh`](../scripts/ursim.sh) starts the container with these settings:
+
+| Setting | Value |
+|---|---|
+| Image | `universalrobots/ursim_cb3`, pinned by digest `sha256:ecdab8a2ec1ec795466214f66596b162ae6d21cdc77c3a5c550cf40d753932a4` (pulled as `latest`) |
+| Robot model | `ROBOT_MODEL=UR10` |
+| Container name | `ursim_cb3`, removed when it stops (`--rm`) |
+| Programs folder | host `~/ursim/programs` (created if missing), mounted at `/ursim/programs` |
+| Ports | published on `127.0.0.1` only, see below |
+
+| Port | Use |
+|---|---|
+| 5900 | VNC |
+| 6080 | VNC in a browser |
+| 29999 | Dashboard Server |
+| 30001–30004 | script interfaces and RTDE, used by `ur_rtde` |
+
+The image is not committed. The digest in `ursim.sh` fixes the version. The programs folder stays outside the repository.
+
+**The image simulates a UR5 by default.** `ROBOT_MODEL=UR10` must be set, which `ursim.sh` does. A UR5 has a shorter reach and different link lengths, so poses, inverse kinematics and the distances to the safety planes would not match the robot.
+
+Open the simulated pendant in a browser at <http://localhost:6080/vnc.html?host=localhost&port=6080>. As on the robot, press **ON** on the **Initialization** screen, then **START** to release the brakes. The scripts need the simulated robot in this state, as on the real one.
+
+### Loading the installation
+
+Copy the exported installation from `backups/` into the simulator's programs folder:
+
+```bash
+cp backups/miniro_2safety.installation ~/ursim/programs/
+```
+
+Load it in the simulated PolyScope from `/ursim/programs` and check that it shows the same values as the robot:
+
+| Check | Expected |
+|---|---|
+| Safety checksum | `313597321` |
+| TCP | `rough_robotiq`, 165.8 mm along tool Z |
+| Payload | 1.8 kg |
+
+With this installation loaded, the simulator enforces the same safety configuration as the robot (see [Safety configuration](#safety-configuration)).
+
+### Versions and copying rule
+
+| | PolyScope |
+|---|---|
+| Robot | 3.15.6 |
+| Simulator | 3.15.8 |
+
+- **Files go one way only: robot → simulator.** Never copy an installation or program saved by the simulator (3.15.8) back to the robot (3.15.6).
+- **Do not update the robot's PolyScope** to match the simulator.
+
+### Running the scripts against the simulator
+
+Add `--sim` to any script that talks to the robot (see [`scripts/robot.py`](#scriptsrobotpy)). Start with the read-only ones:
+
+```bash
+python scripts/show_pose.py --sim --watch
+python scripts/safety.py watch --sim
+python scripts/pick_test.py --sim       # motion in the simulator; fake gripper
+python scripts/pick_place.py --sim
+```
+
+The first line of output must read `TARGET: SIMULATOR (127.0.0.1)`. With `--sim` the motion scripts use [`fake_gripper.py`](#scriptsfake_gripperpy): the real gripper is not opened, even if it is plugged in. Set the object for a close with `UR10_SIM_OBJECT`, for example `UR10_SIM_OBJECT=wide python scripts/pick_place.py --sim`.
+
+URSim does not simulate:
+
+- the gripper (it is on RS-485, not on the controller); `fake_gripper.py` stands in for it;
+- objects, contact or collisions with the cell;
+- the camera.
+
+> **Unverified:** that the simulated controller stops at the same plane margins that `safety.py watch` reports, and that `pick_test.py` and `pick_place.py` behave the same against the simulator as on the robot.
 
 ## Shutdown
 
@@ -313,6 +481,10 @@ As a module:
 | `Not moving: path takes … within …° of its limit` | A joint, usually the shoulder (max −51°), gets near its limit along the path | Start from a pose with the shoulder further from −51°, or choose another target. |
 | `Not moving: active TCP … is not rough_robotiq` | A different TCP is selected on the pendant | Select `rough_robotiq` in **Installation → TCP Configuration**. Do not change it from code. |
 | `safety.py compare` reports differences | The installation on the robot changed, or the wrong file was exported | Confirm the safety checksum on the pendant, then update the constants in `safety.py` and [Safety configuration](#safety-configuration) together. |
+| `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock` | User not in the `docker` group | `sudo usermod -aG docker $USER`, then log out and in (or `newgrp docker`). |
+| The simulator shows a UR5 | Container started without `ROBOT_MODEL=UR10` | Stop it and start it with `scripts/ursim.sh`, which sets the model. |
+| `error: --sim targets the simulator at 127.0.0.1, but --ip is …` (or `UR10_SIM=1 targets …`) | Simulator and a non-local robot IP requested together | Drop `--ip` for the simulator, or drop `--sim` (and `unset UR10_SIM`) for the real robot. |
+| `ur_rtde` cannot connect to `127.0.0.1` | Ports 30001–30004 not published, or the simulated robot is not powered on with the brakes released | Start the simulator with `scripts/ursim.sh`; in the simulated PolyScope press **ON**, then **START**. |
 
 > **Warning: unknown USB sticks.** Inspect any unknown USB stick on a computer first, never in the pendant. PolyScope automatically runs `urmagic_*.sh` files from a USB stick as root.
 

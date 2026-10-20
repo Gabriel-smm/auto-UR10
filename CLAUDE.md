@@ -37,6 +37,7 @@ Use these sections, in this order:
 - **Points to check on the pendant** (when relevant): anything that depends on robot-side configuration or that the code cannot confirm on its own.
 - **Test plan**: a checklist, grouped from least to most risky, each item naming the exact command and the expected result:
   - `[ ] Offline:` checks that need no hardware (dry runs with stand-in objects, maths round-trips, deliberately injected failures that must be rejected).
+  - `[ ] Simulation:` checks against URSim (`scripts/ursim.sh`, scripts run with `--sim`), with what to compare in the simulated PolyScope.
   - `[ ] Hardware, read-only:` RTDE receive-only or status checks, with what to compare against on the pendant.
   - `[ ] Hardware:` motion runs, in the order to run them.
 
@@ -57,6 +58,7 @@ Technical documentation is as important as the code in this project. A task is n
 ## Hardware safety
 
 - **Ask before running anything that talks to the hardware**, including read-only checks (`gripper.py status`, RTDE receive-only reads) and especially motion (`gripper.py activate|open|close`, `pick_test.py`, anything using `RTDEControlInterface`). Approval for one run does not cover the next.
+- Scripts run with `--sim` against URSim do not need per-run approval once the user has confirmed URSim is running. Anything without `--sim`, or with `--ip` pointing at the robot, still does. Check that the output starts with `TARGET: SIMULATOR`.
 - When asking, remind the user to keep a hand on the emergency stop and not to run a PolyScope program at the same time. Gripper activation moves the fingers fully.
 - New motion code: test read-only first, default to slow and small moves, and release the robot with `control.stopScript()` in a `finally` block.
 - Never change robot-side configuration (IP, safety settings, installation) from code. Trust the pendant over written notes.

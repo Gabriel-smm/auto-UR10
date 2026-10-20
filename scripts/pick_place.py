@@ -18,22 +18,22 @@ same time: RTDEControlInterface takes over the robot while connected.
 
 Run:
     python pick_place.py
+    python pick_place.py --sim    # simulator (URSim) at 127.0.0.1, fake gripper
 """
 
+import argparse
 import math
 
 from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
 
-import gripper as g
+import robot
 import safety
 from show_pose import format_pose
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
-ROBOT_IP = '192.168.0.1'
 
 # Target TCP pose, base frame: x, y, z (m), rx, ry, rz (rotation vector, rad)
 TARGET = [-0.00098, 0.57337, -0.08323, -1.9014, -2.3362, -0.1152]
@@ -52,7 +52,7 @@ def distance(a, b):
     return math.dist(a[:3], b[:3])
 
 
-def grip(s, pos):
+def grip(g, s, pos):
     st = g.move(s, pos)
     label = 'open:  ' if pos == g.POS_OPEN else 'closed:'
     print('gripper', label, st)
@@ -60,6 +60,12 @@ def grip(s, pos):
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Move to TARGET, close the gripper, return.')
+    robot.add_args(parser)
+    args = parser.parse_args()
+    ip, sim = robot.select(parser, args)
+    g = robot.gripper(sim)
+
     s = g.connect()
     try:
         st = g.status(s)
@@ -69,7 +75,7 @@ def main():
             print('Activating gripper: fingers will open and close fully')
             g.activate(s)
 
-        receive = RTDEReceiveInterface(ROBOT_IP)
+        receive = RTDEReceiveInterface(ip)
         try:
             start = receive.getActualTCPPose()
             q = receive.getActualQ()
@@ -82,7 +88,7 @@ def main():
                 raise SystemExit(f'Start is more than {MAX_DIST * 1000:.0f} mm from the target: '
                                  'jog closer first')
 
-            control = RTDEControlInterface(ROBOT_IP)
+            control = RTDEControlInterface(ip)
             try:
                 if not control.isPoseWithinSafetyLimits(TARGET):
                     raise SystemExit('Target is outside the safety limits')
@@ -93,9 +99,9 @@ def main():
                 print()
                 input(f'Press Enter to move at {SPEED} m/s (Ctrl-C to abort) ')
 
-                grip(s, g.POS_OPEN)
+                grip(g, s, g.POS_OPEN)
                 control.moveL(TARGET, SPEED, ACCEL)
-                st = grip(s, g.POS_CLOSED)
+                st = grip(g, s, g.POS_CLOSED)
                 if st and st['obj'] == 2:
                     print('Object gripped')
                 control.moveL(start, SPEED, ACCEL)
