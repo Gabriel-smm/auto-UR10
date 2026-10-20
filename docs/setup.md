@@ -334,7 +334,7 @@ It follows the real gripper's status fields:
 
 - `connect()` returns a fresh gripper that is not activated, so every run activates it first.
 - `activate` reports gSTA = 1 for one poll, then 3. A move sent before activation is ignored, as on the real gripper.
-- A move reports gOBJ = 0 (moving) for one poll, then its result. Waits poll every 0.01 s, with no fixed delays.
+- A move reports gOBJ = 0 (moving) for at least one poll and `MOVE_TIME` (0.5 s), then its result, so that code polling the gripper sees a realistic delay. Set `fake_gripper.MOVE_TIME = 0` for instant moves. Waits poll every 0.01 s.
 
 The result of a close depends on the scenario, the object between the fingers:
 
@@ -356,6 +356,8 @@ Setting the scenario:
 | Command line | `UR10_SIM_OBJECT=wide\|narrow\|none` (default none) | `UR10_SIM_SEED=<integer>` (default unseeded) |
 
 The same seed gives the same positions, run after run. `set_object_source(fn)` replaces the fixed object with a function called at each close, so that a model of the cell (which slot the arm is at and what it holds) can drive the scenario later.
+
+`set_bench(bench, pose_fn=None)` hands the close and open results to a [simulated bench](#scriptsfake_benchpy) instead. At each move the fake gripper reads the TCP pose and asks the bench what it would feel there; while a block is held, each status poll also lets the bench apply a pending slip, which turns gOBJ to 3. `pose_fn()` returns the TCP pose; by default it is `getActualTCPPose()` from URSim at `127.0.0.1`, connected on first use and disconnected by `s.close()`. Tests pass their own `pose_fn`, so they need no URSim. With a bench set, the bench's seed decides everything and `NOISE` is not added. `set_bench(None)` returns to the fixed object.
 
 ```bash
 python scripts/fake_gripper.py status                                # fresh gripper, not activated
