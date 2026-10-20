@@ -1,6 +1,19 @@
 {
   "name": "mixed_faults_seed1",
   "description": "All faults at once.",
+  "instruction": "Put every block on the bench in the bin.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": null
+    },
+    "binned": [
+      "mid1",
+      "narrow1",
+      "wide1"
+    ]
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {

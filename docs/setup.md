@@ -348,7 +348,7 @@ The result of a close depends on the scenario, the object between the fingers:
 | `narrow` | 2 (stopped on object) | 205 ± 2 |
 | none | 3 (reached position) | 228 ± 2 |
 
-Opening gives `obj` 3 and `pos` 3 ± 2. The ± 2 is random noise (`NOISE`). `current` is always 0.
+Opening gives `obj` 3 and `pos` 3 ± 2. The ± 2 is random noise (`NOISE`). `current` is 0, except while holding an object after a close with force above 0, when it is 5 (`HOLD_CURRENT`, the value read on the real gripper at force 100).
 
 > **Placeholders:** the `pos` values for `wide` and `narrow` are not measurements. They are to be replaced once the real blocks exist and have been gripped by the real gripper. The no-object 228 and open 3 are the [observed range](#gripper-serial-link).
 
@@ -385,12 +385,12 @@ The TCP is at a slot when it is within `TOL` (0.02 m) of the slot's pose; `slot_
 | open at a bin slot | 3, as above | block gone (`binned`) |
 | open at an occupied slot or away from any slot | 3, as above | block dropped (`lost`) |
 
-`pos_for` interpolates linearly between the points in `CALIBRATION`:
+`pos_for` comes from [`scripts/grip_width.py`](../scripts/grip_width.py), which interpolates linearly between the points in its `CALIBRATION`; `width_for(pos)` is the inverse, used by the [skills](#scriptsskillspy) to report `width_mm`:
 
 | Width | pos | Source |
 |---|---|---|
 | 0 mm | 228 | assumed: closed on nothing (the observed no-object stop) |
-| 73 mm | 67 | measured on the 2F-85, `python gripper.py close` (force 0), 2026-10-20 |
+| 73 mm | 67 | measured on the 2F-85, `python gripper.py close` at force 0 and at force 100, 2026-10-20 |
 | 85 mm | 3 | assumed: fully open (the observed open stop) |
 
 A straight line from 85 mm at pos 3 to 0 mm at pos 228 would put 73 mm at pos 35, not the measured 67, so the relation is not linear over the stroke. Between the points the values are interpolations.
@@ -431,15 +431,17 @@ Scenario file (JSON):
 
 ```json
 {"name": "nominal", "seed": 1,
+ "instruction": "Move the block in A to C.",
+ "expected": {"slots": {"A": null, "C": "b1"}, "binned": []},
  "slots_file": "../scripts/slots.json",
  "slots": {"A": {"block": {"id": "b1", "width_mm": 40}},
            "C": {},
            "bin": {"bin": true}},
  "faults": {"p_slip": 0.1},
- "slip_signal": "silent"}
+ "slip_signal": "auto"}
 ```
 
-An optional `"description"` is ignored by the code. Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`. Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
+An optional `"description"` is ignored by the code. `"instruction"` is the task given to the decider by [`run_task.py`](#scriptsrun_taskpy), and `"expected"` is the bench at the end of a successful episode: the block id (or `null`) per slot, and the ids that should be in the bin. Every scenario uses one of two instructions: "Put every block on the bench in the bin." or "Move the block in X to Y." (`nominal`, `single_A`, `single_B`, `single_C`). Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`, and `approach_z`, the height (m, base frame) above a slot from which the [skills](#scriptsskillspy) descend (`default` 0.10, or per slot name). Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
 
 ```bash
 python scripts/fake_bench.py scenarios/nominal.json    # print a scenario

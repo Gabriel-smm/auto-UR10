@@ -12,9 +12,8 @@ position, what the real gripper would report:
     open at an occupied slot or     block dropped (lost)
     away from any slot
 
-pos from a width is interpolated in CALIBRATION, (width mm, pos) points:
-one measured on the 2F-85 (73 mm at pos 67, force 0), and the open and
-closed ends, which are assumed. Add points as blocks are measured.
+pos from a width comes from grip_width.pos_for (calibration points: one
+measured on the 2F-85, the open and closed ends assumed).
 
 Faults, set per scenario and drawn from a generator seeded by the scenario
 seed, so a run repeats exactly:
@@ -35,6 +34,8 @@ bench.injected.
 
 Scenario file (JSON, in scenarios/):
     {"name": "nominal", "seed": 1,
+     "instruction": "Move the block in A to C.",   # for run_task.py
+     "expected": {"slots": {"A": null, "C": "b1"}, "binned": []},
      "slots_file": "../scripts/slots.json",        # poses by slot name
      "slots": {"A": {"block": {"id": "b1", "width_mm": 40}},
                "C": {},
@@ -61,20 +62,13 @@ import sys
 import time
 
 from fake_gripper import OBJ_REACHED, OBJ_STOPPED, POS_CLOSED, POS_MAX, POS_MIN, POS_OPEN
+from grip_width import STROKE_MM, pos_for
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 TOL = 0.02              # m, the TCP is at a slot within this distance of its pose
-STROKE_MM = 85.0        # 2F-85 opening at POS_MIN
-
-# Width (mm) -> pos (counts) when stopped on a block, interpolated between points.
-CALIBRATION = [
-    (0.0, POS_MAX),     # assumed: closed with nothing between the fingers
-    (73.0, 67),         # measured 2026-10-20: 73 mm object, force 0
-    (STROKE_MM, POS_MIN),  # assumed: fully open
-]
 GHOST_WIDTH_MM = 30.0   # width a ghost block reports
 
 FAULTS = {'p_slip': 0.0, 'p_miss': 0.0, 'width_noise_mm': 0.0, 'ghost_block': 0.0}
@@ -84,14 +78,6 @@ SLIP_SIGNALS = ('auto', 'silent', 'status')
 # ---------------------------------------------------------------------------
 # Scenario
 # ---------------------------------------------------------------------------
-
-
-def pos_for(width_mm):
-    """Finger position (counts) when stopped on a block of this width, from CALIBRATION."""
-    width = max(0.0, min(STROKE_MM, width_mm))
-    for (w0, p0), (w1, p1) in zip(CALIBRATION, CALIBRATION[1:]):
-        if width <= w1:
-            return round(p0 + (width - w0) / (w1 - w0) * (p1 - p0))
 
 
 def parse_scenario(data, base_dir='.', name=None):
@@ -127,7 +113,8 @@ def parse_scenario(data, base_dir='.', name=None):
         raise ValueError(f'slip_signal must be one of {SLIP_SIGNALS}')
 
     return {'name': data.get('name', name or 'unnamed'), 'seed': data.get('seed', 0),
-            'slots': slots, 'faults': faults, 'slip_signal': slip_signal}
+            'slots': slots, 'faults': faults, 'slip_signal': slip_signal,
+            'instruction': data.get('instruction'), 'expected': data.get('expected')}
 
 
 def load_scenario(path):

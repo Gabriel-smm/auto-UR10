@@ -1,6 +1,18 @@
 {
   "name": "narrow_only",
   "description": "Two 15 mm blocks.",
+  "instruction": "Put every block on the bench in the bin.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": null
+    },
+    "binned": [
+      "narrow1",
+      "narrow2"
+    ]
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {

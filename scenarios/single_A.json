@@ -1,6 +1,15 @@
 {
   "name": "single_A",
   "description": "One wide block at A.",
+  "instruction": "Move the block in A to C.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": "wide1"
+    },
+    "binned": []
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {

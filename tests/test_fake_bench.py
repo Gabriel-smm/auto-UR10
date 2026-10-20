@@ -201,3 +201,13 @@ def test_scenario_files_load_and_run(path):
         bench.update(AWAY)
         bench.open(sc['slots']['bin']['pose'][:3])
     assert all(e['scenario'] == path.stem for e in bench.events)
+
+
+@pytest.mark.parametrize('path', SCENARIOS, ids=lambda p: p.stem)
+def test_scenario_has_instruction_and_reachable_layout(path):
+    sc = fake_bench.load_scenario(str(path))
+    assert sc['instruction'] and sc['expected']
+    assert set(sc['expected']['slots']) <= set(sc['slots'])
+    ids = {s['block']['id'] for s in sc['slots'].values() if s['block']}
+    expected_ids = {b for b in sc['expected']['slots'].values() if b} | set(sc['expected']['binned'])
+    assert expected_ids == ids

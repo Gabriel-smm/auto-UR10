@@ -1,6 +1,18 @@
 {
   "name": "slip_always",
   "description": "Every picked block falls once the TCP leaves the slot.",
+  "instruction": "Put every block on the bench in the bin.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": null
+    },
+    "binned": [
+      "narrow1",
+      "wide1"
+    ]
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {
