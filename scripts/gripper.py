@@ -130,7 +130,7 @@ def activate(s, secs=15):
     return wait(s, lambda st: st['sta'] == STA_ACTIVATED, secs)
 
 
-def move(s, pos, speed=64, force=0, secs=8):
+def move(s, pos, speed=64, force=100, secs=8):
     """Move to pos (0-255) and wait until the motion ends or an object is hit."""
     write(s, ACT_GOTO, pos, speed, force)
     time.sleep(0.2)
