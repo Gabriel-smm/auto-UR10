@@ -1,12 +1,25 @@
 {
   "name": "nominal",
+  "description": "A wide block at A, a narrow one at B, C empty, no faults.",
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {
-    "A": {"block": {"id": "wide1", "width_mm": 40}},
-    "B": {"block": {"id": "narrow1", "width_mm": 20}},
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
     "C": {},
-    "bin": {"bin": true}
+    "bin": {
+      "bin": true
+    }
   },
   "faults": {}
 }

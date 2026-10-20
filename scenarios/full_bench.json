@@ -1,0 +1,30 @@
+{
+  "name": "full_bench",
+  "description": "Every slot holds a block; a place needs the bin or a freed slot.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
+    "C": {
+      "block": {
+        "id": "mid1",
+        "width_mm": 30
+      }
+    },
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}

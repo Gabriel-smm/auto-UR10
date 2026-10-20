@@ -1,0 +1,22 @@
+{
+  "name": "ghost_sometimes",
+  "description": "30 % of closes on nothing report an object.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {},
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {
+    "ghost_block": 0.3
+  }
+}

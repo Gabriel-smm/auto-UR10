@@ -55,6 +55,7 @@ flowchart LR
 | [`scripts/fake_bench.py`](scripts/fake_bench.py) | Simulated bench for simulator runs: named slots with grip poses and blocks, what the gripper reports on a close or open at the TCP position, and seeded fault injection (slip, miss, width noise, ghost block) logged as JSON lines. |
 | [`scripts/slots.json`](scripts/slots.json) | Taught TCP poses of the bench slots `A`, `B`, `C`, `bin` and `home` (base frame, m and rotation vector). |
 | [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
+| [`scenarios/`](scenarios/) | Bench scenarios for `fake_bench.py` (JSON): blocks per slot, seed and faults, from nominal runs to slips, misses and ghost blocks. |
 | [`tests/`](tests/) | Offline `pytest` tests for the simulation stand-ins; no robot, URSim or gripper needed. |
 | [`docs/`](docs/) | Lab documentation. |
 | [`docs/setup.md`](docs/setup.md) | Lab operating procedure: network and serial setup, safety checklist, start-up, shutdown, troubleshooting, Modbus reference. |

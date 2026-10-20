@@ -1,0 +1,20 @@
+{
+  "name": "single_C",
+  "description": "One wide block at C.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {},
+    "B": {},
+    "C": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}

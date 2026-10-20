@@ -1,6 +1,7 @@
 """fake_bench.py: picking, placing and injected faults."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -146,3 +147,19 @@ def test_log_file(tmp_path, make_bench):
 def test_bad_scenarios_are_rejected(data, message):
     with pytest.raises(ValueError, match=message):
         fake_bench.parse_scenario(data)
+
+
+SCENARIOS = sorted((Path(__file__).parent.parent / 'scenarios').glob('*.json'))
+
+
+@pytest.mark.parametrize('path', SCENARIOS, ids=lambda p: p.stem)
+def test_scenario_files_load_and_run(path):
+    sc = fake_bench.load_scenario(str(path))
+    assert sc['name'] == path.stem
+    assert {'A', 'B', 'C', 'bin'} <= set(sc['slots'])
+    bench = fake_bench.Bench(sc)
+    for slot in ('A', 'B', 'C'):
+        bench.close(sc['slots'][slot]['pose'][:3])
+        bench.update(AWAY)
+        bench.open(sc['slots']['bin']['pose'][:3])
+    assert all(e['scenario'] == path.stem for e in bench.events)

@@ -1,0 +1,35 @@
+{
+  "name": "mixed_faults_seed1",
+  "description": "All faults at once.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
+    "C": {
+      "block": {
+        "id": "mid1",
+        "width_mm": 30
+      }
+    },
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {
+    "p_slip": 0.2,
+    "p_miss": 0.2,
+    "width_noise_mm": 2,
+    "ghost_block": 0.2
+  }
+}

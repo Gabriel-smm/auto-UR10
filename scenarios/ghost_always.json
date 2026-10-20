@@ -1,0 +1,17 @@
+{
+  "name": "ghost_always",
+  "description": "Empty bench, but every close on nothing reports an object.",
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {},
+    "B": {},
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {
+    "ghost_block": 1
+  }
+}

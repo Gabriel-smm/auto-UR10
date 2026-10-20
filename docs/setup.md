@@ -411,11 +411,36 @@ Scenario file (JSON):
  "faults": {"p_slip": 0.1}}
 ```
 
-Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`. Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
+An optional `"description"` is ignored by the code. Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`. Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
 
 ```bash
 python scripts/fake_bench.py scenarios/nominal.json    # print a scenario
 ```
+
+The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `bin` from `slots.json`. The block widths (15 to 60 mm) are placeholders until the real blocks exist.
+
+| Scenario | Seed | Bench | Faults |
+|---|---|---|---|
+| `empty_bench` | 1 | Nothing on the bench: every close reports gOBJ 3. | none |
+| `full_bench` | 1 | Every slot holds a block; a place needs the bin or a freed slot. | none |
+| `ghost_always` | 1 | Empty bench, but every close on nothing reports an object. | `ghost_block` 1 |
+| `ghost_sometimes` | 1 | 30 % of closes on nothing report an object. | `ghost_block` 0.3 |
+| `miss_always` | 1 | Every close at a full slot finds nothing. | `p_miss` 1 |
+| `miss_sometimes` | 1 | 30 % of closes at a full slot miss. | `p_miss` 0.3 |
+| `mixed_faults_seed1` | 1 | All faults at once. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
+| `mixed_faults_seed2` | 2 | As mixed_faults_seed1, other seed. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
+| `mixed_faults_seed3` | 3 | As mixed_faults_seed1, other seed. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
+| `narrow_only` | 1 | Two 15 mm blocks. | none |
+| `nominal` | 1 | A wide block at A, a narrow one at B, C empty, no faults. | none |
+| `similar_widths` | 1 | 30 and 32 mm blocks with 2 mm noise: the widths overlap. | `width_noise_mm` 2 |
+| `single_A` | 1 | One wide block at A. | none |
+| `single_B` | 1 | One wide block at B. | none |
+| `single_C` | 1 | One wide block at C. | none |
+| `slip_always` | 1 | Every picked block falls once the TCP leaves the slot. | `p_slip` 1 |
+| `slip_sometimes` | 1 | 30 % of picked blocks fall in transport. | `p_slip` 0.3 |
+| `wide_only` | 1 | Two 60 mm blocks. | none |
+| `width_noise_large` | 1 | Nominal bench with 5 mm width noise. | `width_noise_mm` 5 |
+| `width_noise_small` | 1 | Nominal bench with 1 mm width noise. | `width_noise_mm` 1 |
 
 | Function | Purpose |
 |---|---|
