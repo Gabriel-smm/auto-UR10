@@ -312,19 +312,23 @@ Chooses the target for every script that talks to the robot: the real UR10 or th
 | `--ip 127.0.0.1` or `--ip localhost` | simulator, `127.0.0.1` | `fake_gripper.py` |
 | environment `UR10_SIM=1` | simulator, `127.0.0.1` | `fake_gripper.py` |
 | `UR10_SIM=0` or unset | as if not set | |
+| `--scenario <file>` or `UR10_SIM_SCENARIO=<file>`, with the simulator | simulator | `fake_gripper.py` with a [bench](#scriptsfake_benchpy) for that scenario |
 
 Rejected with an error, before anything connects:
 
 - `--sim` or `UR10_SIM=1` with any other `--ip`, for example `--sim --ip 192.168.0.1`;
-- `UR10_SIM` set to anything other than `1`, `0` or empty.
+- `UR10_SIM` set to anything other than `1`, `0` or empty;
+- a scenario without the simulator, for example `--scenario scenarios/nominal.json` alone.
 
 Before connecting, it prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)`. Check this line before every motion run, especially when `UR10_SIM` may be set in the shell.
 
+With a scenario, it also prints `SCENARIO: <name>  seed <n>  log logs/<name>-<YYYYmmdd-HHMMSS>.jsonl`. `UR10_SIM_SEED=<n>` overrides the scenario's seed. The log holds the bench's events: a `start` line with the scenario name, seed, faults and initial blocks, then one line per close, open and slip, with any injected fault. `logs/` is not committed.
+
 | Function | Purpose |
 |---|---|
-| `add_args(parser)` | Add `--sim` and `--ip` to an `argparse` parser. |
+| `add_args(parser)` | Add `--sim`, `--ip` and `--scenario` to an `argparse` parser. |
 | `select(parser, args)` | Apply the rules above, print the target, and return `(ip, sim)`. |
-| `gripper(sim)` | The gripper module for the target: `fake_gripper` or `gripper`. |
+| `gripper(sim, args=None)` | The gripper module for the target: `fake_gripper` or `gripper`. With a scenario in `args`, it gives the fake gripper a bench and opens the log. |
 
 ### `scripts/fake_gripper.py`
 
@@ -514,7 +518,13 @@ python scripts/pick_test.py --sim       # motion in the simulator; fake gripper
 python scripts/pick_place.py --sim
 ```
 
-The first line of output must read `TARGET: SIMULATOR (127.0.0.1)`. With `--sim` the motion scripts use [`fake_gripper.py`](#scriptsfake_gripperpy): the real gripper is not opened, even if it is plugged in. Set the object for a close with `UR10_SIM_OBJECT`, for example `UR10_SIM_OBJECT=wide python scripts/pick_place.py --sim`.
+The first line of output must read `TARGET: SIMULATOR (127.0.0.1)`. With `--sim` the motion scripts use [`fake_gripper.py`](#scriptsfake_gripperpy): the real gripper is not opened, even if it is plugged in. Set the object for a close with `UR10_SIM_OBJECT`, for example `UR10_SIM_OBJECT=wide python scripts/pick_place.py --sim`, or give a [bench scenario](#scriptsfake_benchpy) so that the result depends on where the TCP is:
+
+```bash
+python scripts/pick_place.py --sim --scenario scenarios/nominal.json
+```
+
+With `nominal.json`, a close at slot `A` reports gOBJ 2 and pos 122 (a 40 mm block); a close away from every slot reports gOBJ 3.
 
 URSim does not simulate:
 

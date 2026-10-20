@@ -87,6 +87,8 @@ python scripts/show_pose.py --sim                # read the simulated robot
 python scripts/safety.py watch --sim
 python scripts/pick_test.py --sim                 # simulated arm, fake gripper
 python scripts/pick_place.py --sim
+python scripts/pick_place.py --sim --scenario scenarios/nominal.json   # simulated blocks
+python -m pytest tests -q                         # offline tests, no robot or URSim
 ```
 
 Every robot script prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)` before connecting. Without `--sim`, the usage above is unchanged.

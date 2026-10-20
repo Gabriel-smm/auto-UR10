@@ -64,7 +64,7 @@ def main():
     robot.add_args(parser)
     args = parser.parse_args()
     ip, sim = robot.select(parser, args)
-    g = robot.gripper(sim)
+    g = robot.gripper(sim, args)
 
     s = g.connect()
     try:
