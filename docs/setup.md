@@ -361,7 +361,7 @@ Setting the scenario:
 
 The same seed gives the same positions, run after run. `set_object_source(fn)` replaces the fixed object with a function called at each close, so that a model of the cell (which slot the arm is at and what it holds) can drive the scenario later.
 
-`set_bench(bench, pose_fn=None)` hands the close and open results to a [simulated bench](#scriptsfake_benchpy) instead. At each move the fake gripper reads the TCP pose and asks the bench what it would feel there; while a block is held, each status poll also lets the bench apply a pending slip, which changes the status only with `slip_signal` `status`. `pose_fn()` returns the TCP pose; by default it is `getActualTCPPose()` from URSim at `127.0.0.1`, connected on first use and disconnected by `s.close()`. Tests pass their own `pose_fn`, so they need no URSim. With a bench set, the bench's seed decides everything and `NOISE` is not added. `set_bench(None)` returns to the fixed object.
+`set_bench(bench, pose_fn=None)` hands the close and open results to a [simulated bench](#scriptsfake_benchpy) instead. At each move the fake gripper reads the TCP pose and asks the bench what it would feel there; while a block is held, each status poll also lets the bench apply a pending slip, which may change the status (see `slip_signal`). The force of a close is passed to the bench, which uses it to decide. `pose_fn()` returns the TCP pose; by default it is `getActualTCPPose()` from URSim at `127.0.0.1`, connected on first use and disconnected by `s.close()`. Tests pass their own `pose_fn`, so they need no URSim. With a bench set, the bench's seed decides everything and `NOISE` is not added. `set_bench(None)` returns to the fixed object.
 
 ```bash
 python scripts/fake_gripper.py status                                # fresh gripper, not activated
@@ -380,7 +380,7 @@ The TCP is at a slot when it is within `TOL` (0.02 m) of the slot's pose; `slot_
 |---|---|---|
 | close at a slot with a block | 2, `pos_for(width_mm)` | block held |
 | close at an empty slot or away from any slot | 3, requested position (228 at most) | nothing held |
-| TCP leaves the pick slot with a slip pending | unchanged (`slip_signal` `silent`, default) or 3, 228 (`status`) | block lost |
+| TCP leaves the pick slot with a slip pending | unchanged after a close at force 0; 3, 228 after a close with force (see `slip_signal`) | block lost |
 | open at an empty slot | 3, requested position (3 at least) | block placed there |
 | open at a bin slot | 3, as above | block gone (`binned`) |
 | open at an occupied slot or away from any slot | 3, as above | block dropped (`lost`) |
@@ -410,10 +410,20 @@ Faults, set per scenario, all drawn from one generator seeded by the scenario se
 
 | `slip_signal` | Status after the block falls |
 |---|---|
-| `silent` (default) | Unchanged: gOBJ 2 and the pos of the block. The loss shows only at the next close or place. |
-| `status` | gOBJ 3, pos 228. For testing code that reacts to a status change. Not what the 2F-85 did at force 0. |
+| `auto` (default) | As measured on the 2F-85: unchanged if the block was gripped at force 0; gOBJ 3, pos 228 if it was gripped with force above 0. |
+| `silent` | Always unchanged: gOBJ 2 and the pos of the block. The loss shows only at the next close or place. |
+| `status` | Always gOBJ 3, pos 228. |
 
-The default follows a test on the real gripper (2026-10-20): `python gripper.py close` on a 73 mm object gave gOBJ 2, pos 67, current 0. The object was pulled out, and two `python gripper.py status` reads still gave gOBJ 2, pos 67. At force 0 the gripper keeps no holding current, so it cannot sense a lost object. Whether a force above 0 changes this has not been tested.
+`auto` follows two tests on the real gripper (2026-10-20), each closing on a 73 mm object, pulling it out by hand, then reading `python gripper.py status`:
+
+| Force | After the close | After the object was pulled out |
+|---|---|---|
+| 0 | gOBJ 2, pos 67, current 0 | gOBJ 2, pos 67: no change |
+| 100 | gOBJ 2, pos 67, current 5 | gOBJ 3, pos 228: the fingers closed fully |
+
+At force 0 the gripper keeps no holding current and cannot sense the loss; at force 100 it holds and closes on when the object leaves. The stop position was the same at both forces.
+
+> **Unverified:** forces other than 0 and 100. `auto` treats every force above 0 like 100.
 
 Every close, open and slip is an event. Events with a `fault` field (`miss`, `slip`, `ghost`) are also kept in `bench.injected`. Given a log path, each event is written as one JSON line, starting with a `start` line that holds the scenario name, the seed, the faults and the initial blocks; every line carries the scenario name and seed.
 

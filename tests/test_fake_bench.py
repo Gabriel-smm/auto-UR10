@@ -77,7 +77,7 @@ def test_open_on_occupied_slot_or_away_drops(make_bench):
 
 
 def test_silent_slip_after_leaving_pick_slot(make_bench):
-    bench = make_bench(p_slip=1)
+    bench = make_bench(p_slip=1)                # auto, closed at force 0: silent
     assert bench.close(A[:3])[0] == OBJ_STOPPED
     assert bench.update(A[:3]) is None          # still at the slot: holding
     assert bench.held is not None
@@ -86,6 +86,19 @@ def test_silent_slip_after_leaving_pick_slot(make_bench):
     assert [(e['fault'], e['signal'], e['obj']) for e in bench.injected] == [('slip', 'silent', OBJ_STOPPED)]
     bench.open(C[:3])
     assert bench.blocks()['C'] is None
+
+
+def test_auto_slip_with_force_changes_reading(make_bench):
+    bench = make_bench(p_slip=1)
+    bench.close(A[:3], force=100)
+    assert bench.update(AWAY) == (OBJ_REACHED, POS_MAX)
+    assert bench.injected[0]['signal'] == 'status' and bench.injected[0]['force'] == 100
+
+
+def test_forced_silent_ignores_force(make_bench):
+    bench = make_bench(p_slip=1, slip_signal='silent')
+    bench.close(A[:3], force=100)
+    assert bench.update(AWAY) is None and bench.held is None
 
 
 def test_status_slip_changes_reading(make_bench):

@@ -178,15 +178,15 @@ def write(s, action, pos=0, speed=0, force=0):
     elif action == ACT_GOTO and s.sta == STA_ACTIVATED:
         # Like the real gripper, a move is ignored until activation is complete
         s.goto, s.obj = 1, OBJ_MOVING
-        s.polls, s.result = MOVE_POLLS, _move_result(s, pos)
+        s.polls, s.result = MOVE_POLLS, _move_result(s, pos, force)
         s.done = time.time() + MOVE_TIME
     return frame(bytes([0x10, 0x03, 0xE8, 0x00, 0x03]))
 
 
-def _move_result(s, pos):
+def _move_result(s, pos, force):
     if _bench:
         xyz = _pose()[:3]
-        obj, stop = _bench.close(xyz, pos) if pos > s.pos else _bench.open(xyz, pos)
+        obj, stop = _bench.close(xyz, pos, force) if pos > s.pos else _bench.open(xyz, pos)
         return {'obj': obj, 'pos': stop}
     obj, stop = SCENARIOS[_kind(_source())]
     if obj == OBJ_STOPPED and pos > stop:

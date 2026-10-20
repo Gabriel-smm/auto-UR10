@@ -16,7 +16,7 @@ BIN = [0.0, 0.64, 0.0, 0.0, 0.0, 0.0]
 AWAY = [0.0, 0.5, 0.3]
 
 
-def scenario(seed=1, slip_signal='silent', **faults):
+def scenario(seed=1, slip_signal='auto', **faults):
     """A on the bench with a 40 mm block, B with a 20 mm block, C empty, and a bin."""
     return fake_bench.parse_scenario({
         'name': 'test', 'seed': seed,

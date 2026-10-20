@@ -20,9 +20,11 @@ Faults, set per scenario and drawn from a generator seeded by the scenario
 seed, so a run repeats exactly:
 
     p_slip          the block falls once the TCP leaves the pick slot.
-                    slip_signal 'silent' (default): the status does not
-                    change, as measured on the 2F-85 at force 0; 'status':
-                    gOBJ goes to 3 (unverified, for testing that path)
+                    What the status does then is set by slip_signal:
+                    'auto' (default) as measured on the 2F-85: unchanged
+                    after a close at force 0, gOBJ 3 and pos 228 after a
+                    close with force (tested at 100); 'silent' or 'status'
+                    force one behaviour
     p_miss          a close at a full slot finds nothing (gOBJ 3)
     width_noise_mm  +- uniform noise on the measured width
     ghost_block     a close on nothing reports an object (gOBJ 2)
@@ -37,7 +39,7 @@ Scenario file (JSON, in scenarios/):
      "slots": {"A": {"block": {"id": "b1", "width_mm": 40}},
                "C": {},
                "bin": {"bin": true}},
-     "faults": {"p_slip": 0.1}, "slip_signal": "silent"}
+     "faults": {"p_slip": 0.1}, "slip_signal": "auto"}
 
 A slot takes its pose from "pose" or else from slots_file (relative to the
 scenario file). Only the slots listed are on the bench.
@@ -77,7 +79,7 @@ GHOST_WIDTH_MM = 30.0   # width a ghost block reports
 
 FAULTS = {'p_slip': 0.0, 'p_miss': 0.0, 'width_noise_mm': 0.0, 'ghost_block': 0.0}
 PROBABILITIES = ('p_slip', 'p_miss', 'ghost_block')
-SLIP_SIGNALS = ('silent', 'status')
+SLIP_SIGNALS = ('auto', 'silent', 'status')
 
 # ---------------------------------------------------------------------------
 # Scenario
@@ -120,7 +122,7 @@ def parse_scenario(data, base_dir='.', name=None):
         if not 0 <= faults[key] <= 1:
             raise ValueError(f'{key} must be in [0, 1]')
 
-    slip_signal = data.get('slip_signal', 'silent')
+    slip_signal = data.get('slip_signal', 'auto')
     if slip_signal not in SLIP_SIGNALS:
         raise ValueError(f'slip_signal must be one of {SLIP_SIGNALS}')
 
@@ -151,7 +153,7 @@ class Bench:
         self.name = scenario['name']
         self.seed = scenario['seed'] if seed is None else seed
         self.faults = dict(scenario['faults'])
-        self.slip_signal = scenario.get('slip_signal', 'silent')
+        self.slip_signal = scenario.get('slip_signal', 'auto')
         self.slots = {n: dict(s, block=dict(s['block']) if s['block'] else None)
                       for n, s in scenario['slots'].items()}
         self.rng = random.Random(self.seed)
@@ -160,6 +162,7 @@ class Bench:
         self.stop = None            # pos reported while holding (or on a ghost)
         self.ghost = False          # holding a block that does not exist
         self.slip_pending = False   # held block will fall once the TCP leaves held_from
+        self.force = 0              # force of the close that holds the block
         self.binned, self.lost = [], []
         self.events, self.injected = [], []
         self.log_path = log_path
@@ -189,7 +192,7 @@ class Bench:
         name = min(self.slots, key=lambda n: math.dist(xyz, self.slots[n]['pose'][:3]))
         return name if math.dist(xyz, self.slots[name]['pose'][:3]) <= tol else None
 
-    def close(self, xyz, target=POS_CLOSED):
+    def close(self, xyz, target=POS_CLOSED, force=0):
         """Close at xyz toward target; returns (gOBJ, pos) as the gripper would report."""
         tcp = [round(a, 4) for a in xyz]
         if self.held or self.ghost:
@@ -206,6 +209,7 @@ class Bench:
                 self.slots[name]['block'] = None
                 self.held, self.held_from, self.stop = block, name, stop
                 self.slip_pending = self._draw('p_slip')
+                self.force = force
                 result = (OBJ_STOPPED, stop)
         elif self._draw('ghost_block'):
             fault = 'ghost'
@@ -225,11 +229,14 @@ class Bench:
             return None
         block, self.held, self.slip_pending = self.held, None, False
         self.lost.append(block)
-        reading = (OBJ_REACHED, POS_MAX) if self.slip_signal == 'status' else (OBJ_STOPPED, self.stop)
+        signal = self.slip_signal
+        if signal == 'auto':
+            signal = 'status' if self.force > 0 else 'silent'
+        reading = (OBJ_REACHED, POS_MAX) if signal == 'status' else (OBJ_STOPPED, self.stop)
         self._event('slip', slot=self.held_from, tcp=[round(a, 4) for a in xyz], block=block,
-                    obj=reading[0], pos=reading[1], signal=self.slip_signal, fault='slip')
+                    obj=reading[0], pos=reading[1], force=self.force, signal=signal, fault='slip')
         self.stop = None
-        return reading if self.slip_signal == 'status' else None
+        return reading if signal == 'status' else None
 
     def open(self, xyz, target=POS_OPEN):
         """Open at xyz toward target; returns (gOBJ, pos) as the gripper would report."""
