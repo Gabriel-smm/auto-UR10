@@ -519,6 +519,43 @@ Moves are asynchronous. Setting the abort event, or Ctrl-C, calls `stopL` or `st
 
 > **Unverified on the real robot:** every skill. Tested in URSim (pick, place, home, abort during a moveJ) and offline.
 
+### `scripts/state.py`
+
+Builds the state a decider sees, from real readings only: no LLM builds or edits it, and it never holds the bench's true contents or the injected faults. `Tracker(instruction, poses, approach)` keeps the episode's skill results; `build(gripper, tcp)` returns:
+
+```json
+{"step": 1, "instruction": "Move the block in A to C.",
+ "gripper": {"obj": 2, "meaning": "stopped on an object", "pos": 140, "width_mm": 39.9},
+ "holding": true, "tcp_at": "A",
+ "slots": {"A": {"picks": 1, "gripped": 1, "empty": 0, "placed": 0,
+                 "last": "pick A: gripper stopped on an object, width 39.9 mm"},
+           "B": {"picks": 0, "gripped": 0, "empty": 0, "placed": 0, "last": null}, "...": "..."},
+ "history": [{"step": 0, "skill": "pick", "args": "A", "ok": true, "reason": null,
+              "gripper": {"obj": 2, "pos": 140, "width_mm": 39.9}, "tcp_at": "A", "duration_s": 6.7}]}
+```
+
+| Field | From |
+|---|---|
+| `gripper`, `holding` | the gripper status read now; `holding` is gOBJ 2 |
+| `tcp_at` | the slot the TCP is at or above (up to its approach height), `home`, or `null` |
+| `slots` | per slot, counted from skill results: picks, picks that ended holding (`gripped`) or on nothing (`empty`), places, and the last result in words |
+| `history` | the last 5 skill results |
+
+`options(state)` gives the valid next skills, from the skill library and `slots.json` only: `pick:A`, `pick:B`, `pick:C` when nothing is held; `place:A` … `place:bin` when something is; `home` and `done` always.
+
+### `scripts/decision_rules.py`
+
+The hand-written baseline decider, for comparison with the model. It reads only the state and understands the two scenario instructions:
+
+| Instruction | Rule |
+|---|---|
+| Put every block on the bench in the bin. | holding: `place:bin`; else `pick` the first slot not yet gripped from and not found empty twice; none left: `done` |
+| Move the block in X to Y. | holding: `place:Y`; gripped from X and placed at Y: `done`; X found empty fewer than twice: `pick:X`; else `done` |
+
+Its probabilities are 1.0 for the choice and 0.0 for the rest. `last_ok` is judged from the last result (a pick that ended holding, a place that ended open), and `task_done` is 1.0 when it chooses `done`. Every decider implements `decide(state, options) -> Decision` ([`scripts/decision.py`](../scripts/decision.py)): `choice`, `probs`, `last_ok_prob`, `task_done_prob`, `latency_s`, `raw`.
+
+With the fault-free scenarios, ghost blocks and occasional misses, the rules reach the expected bench. They cannot recover a block that slipped (it is lost) or get past a slot that always misses.
+
 ### Offline tests
 
 The simulation stand-ins have `pytest` tests in [`tests/`](../tests/). They need no robot, no URSim and no gripper: the TCP position is a stand-in value. From the repository root:

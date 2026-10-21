@@ -56,6 +56,9 @@ flowchart LR
 | [`scripts/slots.json`](scripts/slots.json) | Taught TCP poses of the bench slots `A`, `B`, `C`, `bin` and `home` (base frame, m and rotation vector), and `approach_z`, the height above a slot from which the skills descend. |
 | [`scripts/skills.py`](scripts/skills.py) | Skills for the decision loop: `pick`, `place`, `home`, `open_gripper`. Each is planned (approach above the slot, straight-line lift/descend, joint-move transit), checked segment by segment before moving, and returns measured gripper readings. |
 | [`scripts/fake_arm.py`](scripts/fake_arm.py) | In-memory stand-in for the RTDE control and receive interfaces, for offline tests and `--backend fake`. |
+| [`scripts/state.py`](scripts/state.py) | Builds the decider's state from real readings only (gripper, TCP slot, per-slot counts, last 5 skill results) and the valid options. |
+| [`scripts/decision.py`](scripts/decision.py) | The `Decision` every decider returns, and the plain-language option descriptions. |
+| [`scripts/decision_rules.py`](scripts/decision_rules.py) | Hand-written baseline decider: a state machine over the same state the model sees. |
 | [`scripts/grip_width.py`](scripts/grip_width.py) | Block width <-> 2F-85 finger position, interpolated between calibration points (one measured: 73 mm at pos 67). |
 | [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
 | [`scenarios/`](scenarios/) | Bench scenarios for `fake_bench.py` (JSON): blocks per slot, seed and faults, from nominal runs to slips, misses and ghost blocks. |
