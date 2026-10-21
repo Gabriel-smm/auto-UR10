@@ -23,7 +23,7 @@ On the real robot only step mode is accepted, --instruction is required,
 --speed is at most 0.1 m/s, and a checklist must be answered with 'ok'
 before anything connects.
 
-Log: logs/<YYYYmmdd-HHMMSS>-<scenario or real>-<decider>.jsonl, a 'start'
+Log: logs/<YYYYmmdd-HHMMSS>-<scenario[-s<seed>] or real>-<decider>.jsonl, a 'start'
 line, one 'step' line per step, and an 'end' line with the outcome
 (success, fail, abstained, aborted, max_steps, error).
 """
@@ -196,7 +196,8 @@ def connect(args, ip, sim):
     env = dict(os.environ)
     if args.seed is not None:
         env[robot.ENV_SEED] = str(args.seed)
-    g = robot.gripper(sim, args, env=env, pose_fn=receive.getActualTCPPose)
+    g = robot.gripper(sim, args, env=env, pose_fn=receive.getActualTCPPose,
+                      log_dir=os.path.join(args.log_dir, 'bench'))
     if sim and args.backend == 'fake':
         g.MOVE_TIME = 0
     return control, receive, g, g.connect(), getattr(g, '_bench', None) if sim else None
@@ -255,7 +256,13 @@ def run_episode(args, ip, sim, decider=None, ui=None, keys=None):
     scenario = fake_bench.load_scenario(args.scenario) if sim else None
     instruction = args.instruction or scenario['instruction']
     target = 'SIMULATOR' if sim else 'REAL ROBOT'
-    run_id = f'{time.strftime("%Y%m%d-%H%M%S")}-{scenario["name"] if sim else "real"}-{args.decider}'
+    name = f'{scenario["name"]}-s{args.seed}' if sim and args.seed is not None else \
+        (scenario['name'] if sim else 'real')
+    run_id = f'{time.strftime("%Y%m%d-%H%M%S")}-{name}-{args.decider}'
+    n = 1
+    while os.path.exists(os.path.join(args.log_dir, f'{run_id}.jsonl')):
+        n += 1
+        run_id = f'{time.strftime("%Y%m%d-%H%M%S")}-{name}-{args.decider}-{n}'
     log = Log(os.path.join(args.log_dir, f'{run_id}.jsonl'))
 
     if not sim:
@@ -282,7 +289,8 @@ def run_episode(args, ip, sim, decider=None, ui=None, keys=None):
             'model': args.model if args.decider == 'model' else None,
             'device': getattr(decider, 'device', None), 'threshold': args.threshold, 'mode': args.mode,
             'max_steps': args.max_steps, 'speed': args.speed, 'git_commit': git_commit(),
-            'bench_log': bench.log_path if bench else None}
+            'bench_log': bench.log_path if bench else None,
+            'initial_bench': bench_truth(bench) if bench else None}
     log.write(meta)
     end = {'type': 'end', 'run_id': run_id, 'outcome': None, 'steps': 0}
     abort = threading.Event()

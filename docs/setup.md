@@ -650,6 +650,58 @@ In `auto`, `p` and `a` work between steps and `a` and Ctrl-C during a move.
 
 > **Unverified on the real robot.** Tested in URSim (rules decider, `full_bench` to success in 7 steps; abort with `a` and with Ctrl-C during a moveJ) and on the fake backend.
 
+### `scripts/replay.py`
+
+Shows a logged episode again, step by step, in the same panels as `run_task.py`, with the operator's action under each decision. No robot or simulator is needed.
+
+```bash
+python scripts/replay.py logs/20261020-202116-full_bench-rules.jsonl     # Enter: next step, q: quit
+python scripts/replay.py LOG --all                                        # every step at once
+```
+
+### `scripts/run_suite.py`
+
+Runs every scenario under several seeds, headless in the simulator, loading the decider (and the model) once. Each episode writes its own log (and the bench's event log under `bench/`); the list goes to `logs/suite-<YYYYmmdd-HHMMSS>.json`.
+
+```bash
+python scripts/run_suite.py --decider rules --seeds 1 2 3
+python scripts/run_suite.py --decider model --device cpu --scenarios 'scenarios/single_*.json' --seeds 1
+python scripts/run_suite.py --decider rules --backend ursim          # through URSim: real motion times
+```
+
+| Option | Default |
+|---|---|
+| `--decider`, `--model`, `--device`, `--bf16-resident` | `rules` |
+| `--seeds` | 1 2 3 |
+| `--backend` | `fake` (instant moves); `ursim` for URSim |
+| `--scenarios` | `scenarios/*.json` |
+| `--threshold`, `--max-steps`, `--log-dir` | 0.7, 20, `logs/` |
+
+With the fake backend the rules suite (21 scenarios × 3 seeds) takes about 15 s. With the model on the CPU each decision takes 30 to 55 s, so a full suite takes hours; start with a few scenarios.
+
+### `scripts/summarize.py`
+
+Tables per decider and model from suite files, log folders or single logs:
+
+```bash
+python scripts/summarize.py logs/suite-20261020-202636.json
+python scripts/summarize.py logs/suite-A.json logs/suite-B.json      # rules and model side by side
+```
+
+| Column | Meaning |
+|---|---|
+| success, outcomes | episodes ending in each outcome |
+| step accuracy | decisions judged right against the bench truth before the step (below) |
+| abstentions right / wrong / unscored | an abstention is right when the decider's choice would have been wrong |
+| mean steps; latency median / p95; VRAM peak | per episode; per decision; the highest `vram_peak_mb` logged |
+| per fault: detected | the next decision's `last_ok` was below 0.5 |
+| per fault: retried same slot | one of the next two executed skills picked the faulted slot again |
+| per fault: wrong done | the episode ended with `done` and the bench did not match `expected` |
+
+A decision is right if an ideal decider would take it, given the bench truth: place the held block where `expected` wants it; with nothing held, pick a block that is not yet in place, or `done` if every block is. What the decider cannot know also counts as right: picking a slot never gripped from and found empty fewer than twice, and placing when the state says holding but nothing is (a ghost block). Steps where no offered option is right are not scored.
+
+The rules decider over the 63 fault-free and faulty episodes (fake backend, seeds 1–3): 42 successes, 99% step accuracy. The 21 failures are the scenarios it cannot recover from: slips (the block is lost), `miss_always`, and some ghost and miss cases.
+
 ### Offline tests
 
 The simulation stand-ins have `pytest` tests in [`tests/`](../tests/). They need no robot, no URSim and no gripper: the TCP position is a stand-in value. From the repository root:

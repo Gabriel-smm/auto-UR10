@@ -64,6 +64,9 @@ flowchart LR
 | `pytest.ini` | Registers the `model` test marker and leaves those tests out of the default run. |
 | [`scripts/run_task.py`](scripts/run_task.py) | Runs one decision episode with a terminal panel: state, option probabilities, plan and preflight before moving, result, and (simulator) the bench truth. Step mode confirms every skill; auto and headless are simulator-only. Logs every step to `logs/*.jsonl`. |
 | [`scripts/panel.py`](scripts/panel.py) | The `rich` panels shared by `run_task.py` and `replay.py`. |
+| [`scripts/replay.py`](scripts/replay.py) | Replays a logged episode in the same panels, step by step, without a robot. |
+| [`scripts/run_suite.py`](scripts/run_suite.py) | Runs every scenario under several seeds, headless in the simulator (fake backend by default), and writes a suite file. |
+| [`scripts/summarize.py`](scripts/summarize.py) | Per decider/model: success rate, step accuracy against the bench truth, abstentions right and wrong, reaction to each injected fault, steps, latency and VRAM. |
 | [`scripts/grip_width.py`](scripts/grip_width.py) | Block width <-> 2F-85 finger position, interpolated between calibration points (one measured: 73 mm at pos 67). |
 | [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
 | [`scenarios/`](scenarios/) | Bench scenarios for `fake_bench.py` (JSON): blocks per slot, seed and faults, from nominal runs to slips, misses and ghost blocks. |

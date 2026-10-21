@@ -81,12 +81,12 @@ def select(parser, args, env=None):
     return ip, sim
 
 
-def gripper(sim, args=None, env=None, pose_fn=None):
+def gripper(sim, args=None, env=None, pose_fn=None, log_dir=None):
     """The gripper module for the target: fake_gripper for the simulator, else gripper.
 
     With a scenario in args (set by select), the fake gripper gets a
     fake_bench.Bench for it, logging to LOG_DIR. pose_fn() gives the TCP pose
-    the bench is asked at (default: read from URSim).
+    the bench is asked at (default: read from URSim). log_dir overrides LOG_DIR.
     """
     g = importlib.import_module('fake_gripper' if sim else 'gripper')
     path = sim and getattr(args, 'scenario', None)
@@ -95,7 +95,7 @@ def gripper(sim, args=None, env=None, pose_fn=None):
         env = os.environ if env is None else env
         scenario = fake_bench.load_scenario(path)
         seed = int(env[ENV_SEED]) if env.get(ENV_SEED) else None
-        log = os.path.join(LOG_DIR, f'{scenario["name"]}-{time.strftime("%Y%m%d-%H%M%S")}.jsonl')
+        log = os.path.join(log_dir or LOG_DIR, f'{scenario["name"]}-{time.strftime("%Y%m%d-%H%M%S")}.jsonl')
         bench = fake_bench.Bench(scenario, seed, log)
         g.set_bench(bench, pose_fn)
         print(f'SCENARIO: {bench.name}  seed {bench.seed}  log {os.path.relpath(log)}', flush=True)
