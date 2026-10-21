@@ -80,6 +80,8 @@ Two things came up when the bench skills were first run in URSim:
 - **Straight lines across the bench can break the shoulder limit.** The shoulder is limited to −51° in Normal mode. A `moveL` from above slot C to `home` would have taken it to −34°; `safety.preflight` refused it before anything moved. Long moves (transits) are therefore joint moves (`moveJ`), checked at both ends against the joint limits and at sampled poses against the planes.
 - **`getForwardKinematics(q)` in ur_rtde 1.6.5 is wrong without the TCP offset.** Called with joint angles only, after a `getInverseKinematics` call, it returned poses metres off (and checks reported a plane 1.6 m behind). Passing the TCP offset explicitly, `getForwardKinematics(q, tcp)`, returned the right pose. The skills always pass it.
 
+The Decision model (vllm-sr Decision-2.0-Sol-2B, 1.88 B parameters) does not fit the laptop's 4 GB GPU: loading ran out of memory at about 3.6 GB, also with BF16-resident weights. The model's runtime fixes its own numerics and refuses a bitsandbytes `quantization_config`, so 8-bit loading was not an option. It runs on the CPU instead, at about 30 s per decision and 9 GB of RAM.
+
 ## 9. Result
 
 The arm and the gripper are now controlled from one Python script: the arm over Ethernet with RTDE, the gripper over RS-485 through the adapter and wiring that were already in the cart. No parts were bought.

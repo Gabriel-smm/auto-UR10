@@ -328,7 +328,7 @@ With a scenario, it also prints `SCENARIO: <name>  seed <n>  log logs/<name>-<YY
 |---|---|
 | `add_args(parser)` | Add `--sim`, `--ip` and `--scenario` to an `argparse` parser. |
 | `select(parser, args)` | Apply the rules above, print the target, and return `(ip, sim)`. |
-| `gripper(sim, args=None)` | The gripper module for the target: `fake_gripper` or `gripper`. With a scenario in `args`, it gives the fake gripper a bench and opens the log. |
+| `gripper(sim, args=None, pose_fn=None)` | The gripper module for the target: `fake_gripper` or `gripper`. With a scenario in `args`, it gives the fake gripper a bench and opens the log; `pose_fn()` is where the bench reads the TCP pose (default: URSim). |
 
 ### `scripts/fake_gripper.py`
 
@@ -556,13 +556,53 @@ Its probabilities are 1.0 for the choice and 0.0 for the rest. `last_ok` is judg
 
 With the fault-free scenarios, ghost blocks and occasional misses, the rules reach the expected bench. They cannot recover a block that slipped (it is lost) or get past a slot that always misses.
 
+### `scripts/decision_model.py`
+
+Decider backed by a [vllm-sr Decision 2.0](https://huggingface.co/vllm-sr/Decision-2.0-Sol-2B) model, which answers typed questions with probabilities and generates no text. Install its dependencies first:
+
+```bash
+pip install -r requirements-model.txt    # torch, transformers>=5.17, accelerate, safetensors
+```
+
+Each step makes one `model.system_one(state=json.dumps(state), questions=...)` call:
+
+| Question | Type | Asked |
+|---|---|---|
+| `next_skill` | `choice` | Which skill should the robot run next to carry out the instruction? The criteria are the valid options, each with a short description (`decision.describe`). |
+| `last_ok` | `noul` (yes/no) | Did the last skill have its intended effect? |
+| `task_done` | `noul` | Has the instruction been carried out? |
+
+A real answer (Sol-2B, scenario `nominal`, after `pick:A`):
+
+```json
+{"answers": {"next_skill": {"choice": "place:C", "confidence": 0.286, "type": "choice",
+                            "probabilities": {"place:C": 0.594, "place:bin": 0.158, "place:B": 0.093,
+                                              "done": 0.063, "place:A": 0.051, "home": 0.041}},
+             "last_ok": {"noul": 0.569, "type": "noul"},
+             "task_done": {"noul": 0.744, "type": "noul"}},
+ "model": "Decision-2.0-Sol-2B", "usage": {"input_tokens": 1328, "output_tokens": 0}}
+```
+
+The decision's `choice` is the offered option with the highest probability, `probs` are the `next_skill` probabilities, and `last_ok_prob` and `task_done_prob` are the `noul` values. The model's own `confidence` is kept in `extra` and in the log; it is not the probability the threshold is compared with. An answer without probabilities (for example an over-long state) gives all zeros, so the step abstains.
+
+| Option | Values | Notes |
+|---|---|---|
+| `--model` | default `vllm-sr/Decision-2.0-Sol-2B` | loaded with `AutoModel.from_pretrained(..., trust_remote_code=True)` |
+| `--device` | `auto` (GPU if any), `cuda`, `cpu` | the model's runtime fixes the numerics: BF16 autocast on a GPU, FP32 on the CPU |
+| `--bf16-resident` | flag | keeps the weights in BF16 |
+
+On the control laptop (RTX 500 Ada, 4 GB), Sol-2B does not fit on the GPU: loading runs out of memory at about 3.6 GB, with or without `--bf16-resident`. The runtime refuses a `quantization_config`, so 8-bit or 4-bit loading through bitsandbytes is not possible, and the published quantized versions (GGUF, ONNX, MLX) are for other runtimes. On the CPU it loads in about 30 s, uses about 9 GB of RAM, and takes about 30 s per decision. A `CUDA out of memory` while loading stops with a message to use `--device cpu`.
+
+Tests: `tests/test_deciders.py` parses a saved real answer (`tests/fixtures/sol2b_after_pick.json`); `python -m pytest tests -m model` also loads the real model (on the CPU unless `UR10_MODEL_DEVICE` says otherwise).
+
 ### Offline tests
 
 The simulation stand-ins have `pytest` tests in [`tests/`](../tests/). They need no robot, no URSim and no gripper: the TCP position is a stand-in value. From the repository root:
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q
+python -m pytest tests -q                # everything except the real model
+python -m pytest tests -q -m model       # the real Decision model too (needs requirements-model.txt)
 ```
 
 ## Simulation (URSim)

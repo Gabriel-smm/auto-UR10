@@ -59,6 +59,9 @@ flowchart LR
 | [`scripts/state.py`](scripts/state.py) | Builds the decider's state from real readings only (gripper, TCP slot, per-slot counts, last 5 skill results) and the valid options. |
 | [`scripts/decision.py`](scripts/decision.py) | The `Decision` every decider returns, and the plain-language option descriptions. |
 | [`scripts/decision_rules.py`](scripts/decision_rules.py) | Hand-written baseline decider: a state machine over the same state the model sees. |
+| [`scripts/decision_model.py`](scripts/decision_model.py) | Decider backed by a vllm-sr Decision 2.0 model (default Sol-2B): one `system_one` call per step with `next_skill`, `last_ok` and `task_done`. |
+| `requirements-model.txt` | Extra dependencies for the model decider: `torch`, `transformers>=5.17`, `accelerate`, `safetensors`. |
+| `pytest.ini` | Registers the `model` test marker and leaves those tests out of the default run. |
 | [`scripts/grip_width.py`](scripts/grip_width.py) | Block width <-> 2F-85 finger position, interpolated between calibration points (one measured: 73 mm at pos 67). |
 | [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
 | [`scenarios/`](scenarios/) | Bench scenarios for `fake_bench.py` (JSON): blocks per slot, seed and faults, from nominal runs to slips, misses and ghost blocks. |

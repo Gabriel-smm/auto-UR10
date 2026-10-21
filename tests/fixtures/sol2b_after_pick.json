@@ -1,0 +1,13 @@
+{
+  "note": "Real Decision-2.0-Sol-2B answer (CPU, 2026-10-20), scenario nominal, state after pick:A",
+  "options": ["place:A", "place:B", "place:C", "place:bin", "home", "done"],
+  "raw": {"answers": {"last_ok": {"noul": 0.5692290598715889, "type": "noul"},
+                      "next_skill": {"choice": "place:C", "confidence": 0.2860851737564295,
+                                     "probabilities": {"done": 0.06302881510796307, "home": 0.041167141609871824,
+                                                       "place:A": 0.050988468651056634, "place:B": 0.09297898984975317,
+                                                       "place:C": 0.5938443852678845, "place:bin": 0.15799219951347082},
+                                     "type": "choice"},
+                      "task_done": {"noul": 0.7444132302444489, "type": "noul"}},
+          "model": "Decision-2.0-Sol-2B",
+          "usage": {"input_tokens": 1328, "output_tokens": 0}}
+}
