@@ -26,6 +26,22 @@ flowchart LR
     TM --> GR["Robotiq 2F-85"]
     R -. "--sim · localhost · RTDE" .-> SIM["URSim UR10 (Docker)"]
     S -. "--sim" .-> FG["fake_gripper.py"]
+    FG -. "close/open at the TCP" .-> FB["fake_bench.py"]
+```
+
+Decision loop ([`run_task.py`](scripts/run_task.py)):
+
+```mermaid
+flowchart LR
+    ST["state.py<br/>(real readings only)"] --> D["decider<br/>rules or Decision model"]
+    D -- "choice + probabilities" --> T{"P ≥ threshold?"}
+    T -- no --> AB["abstain: ask the operator"]
+    T -- yes --> PL["skills.plan<br/>+ preflight"]
+    AB --> PL
+    PL --> OP["operator confirms<br/>(step mode)"]
+    OP --> EX["skills.execute<br/>arm + gripper"]
+    EX -- "measured result" --> ST
+    EX --> LOG["logs/*.jsonl"]
 ```
 
 - The **UR10 controller** keeps real-time control and enforces the safety limits (safety planes and joint position limits).
@@ -33,6 +49,7 @@ flowchart LR
 - **`ur_rtde`** sends motion commands and reads the robot state.
 - **`gripper.py`** drives the gripper directly with Modbus RTU frames, without a URCap.
 - The cart's original Ready Robotics ForgeOS layer is not used; the robot runs on native PolyScope.
+- **The decision loop** ([`run_task.py`](scripts/run_task.py)) lets a decider (hand-written rules, or the vllm-sr Decision 2.0 model) choose skills (`pick`, `place`, `home`) from a state built only from gripper and arm readings. Every skill is planned and checked against the safety configuration before it moves, and on the real robot every skill is confirmed by the operator; see [`run_task.py`](docs/setup.md#scriptsrun_taskpy).
 - **URSim**, Universal Robots' simulator, runs as a simulated UR10 in Docker on the control computer, with the robot's installation loaded, so `ur_rtde` scripts can be tried on `127.0.0.1` before the real arm. With `--sim`, **`robot.py`** points the scripts at it and swaps in **`fake_gripper.py`** for the gripper; see [Simulation (URSim)](docs/setup.md#simulation-ursim).
 
 ## Repository
