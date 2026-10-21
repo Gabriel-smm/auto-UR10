@@ -40,7 +40,7 @@ flowchart LR
 | Path | Description |
 |---|---|
 | `README.md` | Project overview, hardware, architecture and quick usage. |
-| `requirements.txt` | Python dependencies: `ur_rtde`, `pyserial`, and `pytest` for the offline tests. |
+| `requirements.txt` | Python dependencies: `ur_rtde`, `pyserial`, `rich` for the decision panel, and `pytest` for the offline tests. |
 | `.gitignore` | Ignores Python artifacts, editor/OS files, robot backups, PolyScope programs, installations and variables files, and logs. |
 | `LICENSE` | MIT License. |
 | `CLAUDE.md` | Guidance for Claude Code: project context, git rules, documentation and hardware-safety requirements. |
@@ -62,6 +62,8 @@ flowchart LR
 | [`scripts/decision_model.py`](scripts/decision_model.py) | Decider backed by a vllm-sr Decision 2.0 model (default Sol-2B): one `system_one` call per step with `next_skill`, `last_ok` and `task_done`. |
 | `requirements-model.txt` | Extra dependencies for the model decider: `torch`, `transformers>=5.17`, `accelerate`, `safetensors`. |
 | `pytest.ini` | Registers the `model` test marker and leaves those tests out of the default run. |
+| [`scripts/run_task.py`](scripts/run_task.py) | Runs one decision episode with a terminal panel: state, option probabilities, plan and preflight before moving, result, and (simulator) the bench truth. Step mode confirms every skill; auto and headless are simulator-only. Logs every step to `logs/*.jsonl`. |
+| [`scripts/panel.py`](scripts/panel.py) | The `rich` panels shared by `run_task.py` and `replay.py`. |
 | [`scripts/grip_width.py`](scripts/grip_width.py) | Block width <-> 2F-85 finger position, interpolated between calibration points (one measured: 73 mm at pos 67). |
 | [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
 | [`scenarios/`](scenarios/) | Bench scenarios for `fake_bench.py` (JSON): blocks per slot, seed and faults, from nominal runs to slips, misses and ghost blocks. |
@@ -99,6 +101,7 @@ python scripts/pick_test.py --sim                 # simulated arm, fake gripper
 python scripts/pick_place.py --sim
 python scripts/pick_place.py --sim --scenario scenarios/nominal.json   # simulated blocks
 python -m pytest tests -q                         # offline tests, no robot or URSim
+python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider rules   # decision loop, step mode
 ```
 
 Every robot script prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)` before connecting. Without `--sim`, the usage above is unchanged.

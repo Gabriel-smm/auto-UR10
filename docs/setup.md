@@ -595,6 +595,61 @@ On the control laptop (RTX 500 Ada, 4 GB), Sol-2B does not fit on the GPU: loadi
 
 Tests: `tests/test_deciders.py` parses a saved real answer (`tests/fixtures/sol2b_after_pick.json`); `python -m pytest tests -m model` also loads the real model (on the CPU unless `UR10_MODEL_DEVICE` says otherwise).
 
+### `scripts/run_task.py`
+
+Runs one episode: a decider chooses skills until it says `done`. Each step: build the state ([`state.py`](#scriptsstatepy)) → decide → abstain if the chosen option's probability is below `--threshold` → plan and preflight the skill ([`skills.py`](#scriptsskillspy)) → show it → confirm → execute → log.
+
+```bash
+python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider rules        # step mode
+python scripts/run_task.py --sim --scenario scenarios/nominal.json \
+    --decider model --model vllm-sr/Decision-2.0-Sol-2B --device cpu
+python scripts/run_task.py --sim --backend fake --scenario scenarios/full_bench.json --mode headless
+python scripts/run_task.py --instruction "Move the block in A to C."                     # real robot
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--sim`, `--ip`, `--scenario` | real robot | as for every robot script ([`robot.py`](#scriptsrobotpy)); the simulator needs `--scenario` |
+| `--backend` | `ursim` | `fake`: [`fake_arm.py`](../scripts/fake_arm.py) instead of URSim, instant moves (simulator only) |
+| `--decider` | `rules` | `rules` ([`decision_rules.py`](#scriptsdecision_rulespy)) or `model` ([`decision_model.py`](#scriptsdecision_modelpy)) |
+| `--model`, `--device`, `--bf16-resident` | Sol-2B, `auto` | model decider only |
+| `--instruction` | the scenario's | required on the real robot |
+| `--mode` | `step` | `step`: confirm every skill; `auto` and `headless` (no panel, log only): simulator only |
+| `--threshold` | 0.7 | below it the step abstains: step mode asks you, auto and headless end the episode as `abstained` |
+| `--max-steps` | 20 | |
+| `--speed` | 0.1 m/s | moveL speed; at most 0.1 on the real robot |
+| `--seed` | the scenario's | bench seed |
+
+**Panel**, one per step: the TARGET line (red background on the real robot), scenario, seed, decider, step k/max; the state sent to the decider (summary, `s` expands it); every option with its probability bar, the choice (▶), an override (O), the threshold, `last_ok`, `task_done`, latency and VRAM; the plan with each segment's motion, target and preflight result, before anything moves; after the move, the measured gripper reading, TCP, ok/reason and duration; in the simulator only, the bench truth (slots, held, binned, lost, faults injected in this step), marked as never shown to the decider.
+
+**Keys** (step mode):
+
+| Key | Action |
+|---|---|
+| Enter | execute the shown choice (or the override) |
+| `o`, then a number | override: execute another valid option instead; the plan is redrawn and Enter is needed again |
+| `k` | skip this step without moving |
+| `p` | pause / resume |
+| `s` | expand / collapse the state |
+| `a` | abort: stop the move (`stopL`/`stopJ`) where it is; the arm does not go home |
+| Ctrl-C | the same as `a`, at any time |
+
+In `auto`, `p` and `a` work between steps and `a` and Ctrl-C during a move.
+
+**Real robot**: only `--mode step`; `--instruction` is required; `--speed` at most 0.1 m/s. Before anything connects it shows a checklist (emergency stop in reach, area clear, reduced speed, no PolyScope program running) and continues only if you type `ok`. An unactivated gripper is activated only after Enter. At `done` it asks whether the instruction was carried out (`y`/`n`), since there is no bench truth.
+
+**Log**: `logs/<YYYYmmdd-HHMMSS>-<scenario or real>-<decider>.jsonl`.
+
+| Line | Fields |
+|---|---|
+| `start` | `run_id`, `target`, `ip`, `backend`, `scenario`, `seed`, `faults`, `instruction`, `expected`, `decider`, `model`, `device`, `threshold`, `mode`, `max_steps`, `speed`, `git_commit`, `bench_log` |
+| `step` | `step`, `state`, `options`, `questions`, `decision` (`choice`, `probs`, `last_ok_prob`, `task_done_prob`, `latency_s`, `raw`, `extra`), `abstained`, `operator` (`action`: `exec`, `override`, `skip`, `abort`, `auto` or `abstain`; `choice`: the override), `executed`, `plan`, `preflight`, `result`, `vram_peak_mb`; simulator only: `bench`, `injected` |
+| `end` | `outcome` (`success`, `fail`, `abstained`, `aborted`, `max_steps`, `error`), `steps`; simulator: `final_bench`, `expected`, `match`; real robot: `operator_verdict` |
+
+`decision.choice` is always the decider's choice; what ran is in `executed`, and an override is in `operator`, so overrides are never mixed with the decider's choices. In the simulator, `success` means the bench matches the scenario's `expected` when the episode ends with `done`.
+
+> **Unverified on the real robot.** Tested in URSim (rules decider, `full_bench` to success in 7 steps; abort with `a` and with Ctrl-C during a moveJ) and on the fake backend.
+
 ### Offline tests
 
 The simulation stand-ins have `pytest` tests in [`tests/`](../tests/). They need no robot, no URSim and no gripper: the TCP position is a stand-in value. From the repository root:
