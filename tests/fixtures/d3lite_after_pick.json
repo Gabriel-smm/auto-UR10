@@ -1,0 +1,13 @@
+{
+  "note": "Real vllm-sr/d3-lite answer (GPU, 2026-10-21), scenario nominal, state after pick:A",
+  "options": ["place:A", "place:B", "place:C", "place:bin", "home", "done"],
+  "raw": {"answers": {"last_ok": {"noul": 0.10549377062162416, "type": "noul"},
+                      "next_skill": {"choice": "place:A", "confidence": 0.4891583242347921,
+                                     "probabilities": {"done": 0.017983365703467098, "home": 0.01140393030976543,
+                                                       "place:A": 0.5205219954968132, "place:B": 0.006927820815176773,
+                                                       "place:C": 0.4306239163654451, "place:bin": 0.012538971309332337},
+                                     "type": "choice"},
+                      "task_done": {"noul": 0.19608619195608162, "type": "noul"}},
+          "model": "d3-lite",
+          "usage": {"input_tokens": 1341, "output_tokens": 0}}
+}

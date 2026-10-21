@@ -1,7 +1,7 @@
 """Run every scenario, under several seeds, headless in the simulator.
 
     python scripts/run_suite.py --decider rules --seeds 1 2 3
-    python scripts/run_suite.py --decider model --model vllm-sr/Decision-2.0-Sol-2B --device cpu
+    python scripts/run_suite.py --decider model --model vllm-sr/d3-lite
     python scripts/run_suite.py --decider rules --backend ursim --scenarios 'scenarios/slip_*.json'
 
 Each episode is run_task.py --sim --mode headless with the bench seed set,
@@ -15,6 +15,7 @@ import json
 import os
 import time
 
+import decision_model
 import robot
 import run_task
 
@@ -33,7 +34,7 @@ SEEDS = [1, 2, 3]
 def main():
     p = argparse.ArgumentParser(description='Run all scenarios headless in the simulator.')
     p.add_argument('--decider', choices=('rules', 'model'), default='rules')
-    p.add_argument('--model', default='vllm-sr/Decision-2.0-Sol-2B')
+    p.add_argument('--model', default=decision_model.MODEL)
     p.add_argument('--device', choices=('auto', 'cuda', 'cpu'), default='auto')
     p.add_argument('--bf16-resident', action='store_true')
     p.add_argument('--seeds', type=int, nargs='+', default=SEEDS)

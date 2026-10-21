@@ -558,11 +558,17 @@ With the fault-free scenarios, ghost blocks and occasional misses, the rules rea
 
 ### `scripts/decision_model.py`
 
-Decider backed by a [vllm-sr Decision 2.0](https://huggingface.co/vllm-sr/Decision-2.0-Sol-2B) model, which answers typed questions with probabilities and generates no text. Install its dependencies first:
+Decider backed by a vllm-sr decision model, which answers typed questions with probabilities and generates no text. The default is [`vllm-sr/d3-lite`](https://huggingface.co/vllm-sr/d3-lite); [`vllm-sr/Decision-2.0-Sol-2B`](https://huggingface.co/vllm-sr/Decision-2.0-Sol-2B) has the same interface. Install the dependencies first:
 
 ```bash
-pip install -r requirements-model.txt    # torch, transformers>=5.17, accelerate, safetensors
+pip install -r requirements-model.txt    # torch, transformers>=5.17, accelerate, safetensors,
+                                         # pillow, torchvision, opencv-python-headless (d3 imports them)
 ```
+
+| Model | Parameters | On the control laptop (RTX 500 Ada, 4 GB) |
+|---|---|---|
+| `vllm-sr/d3-lite` (default) | 0.85 B | GPU: 1.6 GB loaded, 1.8 GB peak; about 0.5 s per decision (3 s for the first) |
+| `vllm-sr/Decision-2.0-Sol-2B` | 1.88 B | does not fit the GPU; CPU: about 9 GB of RAM, 30 to 55 s per decision |
 
 Each step makes one `model.system_one(state=json.dumps(state), questions=...)` call:
 
@@ -572,28 +578,28 @@ Each step makes one `model.system_one(state=json.dumps(state), questions=...)` c
 | `last_ok` | `noul` (yes/no) | Did the last skill have its intended effect? |
 | `task_done` | `noul` | Has the instruction been carried out? |
 
-A real answer (Sol-2B, scenario `nominal`, after `pick:A`):
+A real answer (d3-lite, scenario `nominal`, after `pick:A`):
 
 ```json
-{"answers": {"next_skill": {"choice": "place:C", "confidence": 0.286, "type": "choice",
-                            "probabilities": {"place:C": 0.594, "place:bin": 0.158, "place:B": 0.093,
-                                              "done": 0.063, "place:A": 0.051, "home": 0.041}},
-             "last_ok": {"noul": 0.569, "type": "noul"},
-             "task_done": {"noul": 0.744, "type": "noul"}},
- "model": "Decision-2.0-Sol-2B", "usage": {"input_tokens": 1328, "output_tokens": 0}}
+{"answers": {"next_skill": {"choice": "place:A", "confidence": 0.489, "type": "choice",
+                            "probabilities": {"place:A": 0.521, "place:C": 0.431, "done": 0.018,
+                                              "place:bin": 0.013, "home": 0.011, "place:B": 0.007}},
+             "last_ok": {"noul": 0.105, "type": "noul"},
+             "task_done": {"noul": 0.196, "type": "noul"}},
+ "model": "d3-lite", "usage": {"input_tokens": 1341, "output_tokens": 0}}
 ```
 
 The decision's `choice` is the offered option with the highest probability, `probs` are the `next_skill` probabilities, and `last_ok_prob` and `task_done_prob` are the `noul` values. The model's own `confidence` is kept in `extra` and in the log; it is not the probability the threshold is compared with. An answer without probabilities (for example an over-long state) gives all zeros, so the step abstains.
 
 | Option | Values | Notes |
 |---|---|---|
-| `--model` | default `vllm-sr/Decision-2.0-Sol-2B` | loaded with `AutoModel.from_pretrained(..., trust_remote_code=True)` |
+| `--model` | default `vllm-sr/d3-lite` | loaded with `AutoModel.from_pretrained(..., trust_remote_code=True)` |
 | `--device` | `auto` (GPU if any), `cuda`, `cpu` | the model's runtime fixes the numerics: BF16 autocast on a GPU, FP32 on the CPU |
-| `--bf16-resident` | flag | keeps the weights in BF16 |
+| `--bf16-resident` | flag | keeps the weights in BF16 (Decision 2.0 only; d3 refuses it) |
 
-On the control laptop (RTX 500 Ada, 4 GB), Sol-2B does not fit on the GPU: loading runs out of memory at about 3.6 GB, with or without `--bf16-resident`. The runtime refuses a `quantization_config`, so 8-bit or 4-bit loading through bitsandbytes is not possible, and the published quantized versions (GGUF, ONNX, MLX) are for other runtimes. On the CPU it loads in about 30 s, uses about 9 GB of RAM, and takes about 30 s per decision. A `CUDA out of memory` while loading stops with a message to use `--device cpu`.
+Sol-2B does not fit the 4 GB GPU: loading runs out of memory at about 3.6 GB, with or without `--bf16-resident`. Both runtimes refuse a `quantization_config`, so 8-bit or 4-bit loading through bitsandbytes is not possible, and the published quantized Sol-2B versions (GGUF, ONNX, MLX) are for other runtimes. That is why the default is d3-lite. A `CUDA out of memory` while loading stops with a message to use a smaller model or `--device cpu`. Both models run their own code from the Hugging Face repository (`trust_remote_code`); review it before loading a new model or revision.
 
-Tests: `tests/test_deciders.py` parses a saved real answer (`tests/fixtures/sol2b_after_pick.json`); `python -m pytest tests -m model` also loads the real model (on the CPU unless `UR10_MODEL_DEVICE` says otherwise).
+Tests: `tests/test_deciders.py` parses saved real answers (`tests/fixtures/d3lite_after_pick.json`, `sol2b_after_pick.json`); `python -m pytest tests -m model` also loads the default model (on the GPU if there is one; `UR10_MODEL_DEVICE=cpu` to force the CPU).
 
 ### `scripts/run_task.py`
 
@@ -601,8 +607,7 @@ Runs one episode: a decider chooses skills until it says `done`. Each step: buil
 
 ```bash
 python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider rules        # step mode
-python scripts/run_task.py --sim --scenario scenarios/nominal.json \
-    --decider model --model vllm-sr/Decision-2.0-Sol-2B --device cpu
+python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider model     # d3-lite
 python scripts/run_task.py --sim --backend fake --scenario scenarios/full_bench.json --mode headless
 python scripts/run_task.py --instruction "Move the block in A to C."                     # real robot
 ```
@@ -612,7 +617,7 @@ python scripts/run_task.py --instruction "Move the block in A to C."            
 | `--sim`, `--ip`, `--scenario` | real robot | as for every robot script ([`robot.py`](#scriptsrobotpy)); the simulator needs `--scenario` |
 | `--backend` | `ursim` | `fake`: [`fake_arm.py`](../scripts/fake_arm.py) instead of URSim, instant moves (simulator only) |
 | `--decider` | `rules` | `rules` ([`decision_rules.py`](#scriptsdecision_rulespy)) or `model` ([`decision_model.py`](#scriptsdecision_modelpy)) |
-| `--model`, `--device`, `--bf16-resident` | Sol-2B, `auto` | model decider only |
+| `--model`, `--device`, `--bf16-resident` | `vllm-sr/d3-lite`, `auto` | model decider only |
 | `--instruction` | the scenario's | required on the real robot |
 | `--mode` | `step` | `step`: confirm every skill; `auto` and `headless` (no panel, log only): simulator only |
 | `--threshold` | 0.7 | below it the step abstains: step mode asks you, auto and headless end the episode as `abstained` |
@@ -665,7 +670,7 @@ Runs every scenario under several seeds, headless in the simulator, loading the 
 
 ```bash
 python scripts/run_suite.py --decider rules --seeds 1 2 3
-python scripts/run_suite.py --decider model --device cpu --scenarios 'scenarios/single_*.json' --seeds 1
+python scripts/run_suite.py --decider model --seeds 1 2 3                        # d3-lite on the GPU
 python scripts/run_suite.py --decider rules --backend ursim          # through URSim: real motion times
 ```
 
@@ -677,7 +682,7 @@ python scripts/run_suite.py --decider rules --backend ursim          # through U
 | `--scenarios` | `scenarios/*.json` |
 | `--threshold`, `--max-steps`, `--log-dir` | 0.7, 20, `logs/` |
 
-With the fake backend the rules suite (21 scenarios × 3 seeds) takes about 15 s. With the model on the CPU each decision takes 30 to 55 s, so a full suite takes hours; start with a few scenarios.
+With the fake backend the rules suite (21 scenarios × 3 seeds) takes about 15 s. With d3-lite on the GPU each decision takes about 0.5 s; with Sol-2B on the CPU, 30 to 55 s, so a full Sol-2B suite takes hours.
 
 ### `scripts/summarize.py`
 

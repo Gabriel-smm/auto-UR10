@@ -2,3 +2,6 @@ torch
 transformers>=5.17
 accelerate
 safetensors
+pillow
+torchvision
+opencv-python-headless

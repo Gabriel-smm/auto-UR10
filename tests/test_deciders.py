@@ -63,6 +63,7 @@ import os  # noqa: E402
 import decision_model  # noqa: E402
 
 FIXTURE = os.path.join(os.path.dirname(__file__), 'fixtures', 'sol2b_after_pick.json')
+FIXTURE_D3 = os.path.join(os.path.dirname(__file__), 'fixtures', 'd3lite_after_pick.json')
 
 
 def test_questions_from_options():
@@ -81,6 +82,19 @@ def test_parse_real_answer():
     assert d.last_ok_prob == pytest.approx(0.569, abs=1e-3)
     assert d.task_done_prob == pytest.approx(0.744, abs=1e-3)
     assert d.extra['confidence'] == pytest.approx(0.286, abs=1e-3) and d.extra['error'] is None
+
+
+def test_parse_real_d3lite_answer():
+    fx = json.load(open(FIXTURE_D3))
+    d = decision_model.parse(fx['raw'], fx['options'], latency_s=0.5)
+    assert d.choice == 'place:A' and d.probs['place:A'] == pytest.approx(0.521, abs=1e-3)
+    assert d.last_ok_prob == pytest.approx(0.105, abs=1e-3)
+    assert d.task_done_prob == pytest.approx(0.196, abs=1e-3)
+    assert d.extra['usage']['input_tokens'] == 1341
+
+
+def test_default_model_is_d3_lite():
+    assert decision_model.MODEL == 'vllm-sr/d3-lite'
 
 
 def test_parse_choice_is_argmax_over_offered_options():
@@ -102,7 +116,7 @@ def test_real_model_answers_every_option():
     tracker.record(skills.pick(cell, 'A'))
     st = tracker.build(cell.gripper(), cell.tcp())
     options = tracker.options(st)
-    decider = decision_model.ModelDecider(device=os.environ.get('UR10_MODEL_DEVICE', 'cpu'))
+    decider = decision_model.ModelDecider(device=os.environ.get('UR10_MODEL_DEVICE', 'auto'))
     d = decider.decide(st, options)
     assert set(d.probs) == set(options) and d.choice in options
     assert sum(d.probs.values()) == pytest.approx(1.0, abs=0.02)

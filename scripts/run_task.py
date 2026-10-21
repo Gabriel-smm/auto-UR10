@@ -7,7 +7,7 @@ an error.
 
     python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider rules
     python scripts/run_task.py --sim --scenario scenarios/nominal.json \\
-        --decider model --model vllm-sr/Decision-2.0-Sol-2B --device cpu
+        --decider model --model vllm-sr/d3-lite
     python scripts/run_task.py --sim --backend fake --scenario ... --mode headless
     python scripts/run_task.py --instruction "Move the block in A to C."   # real robot
 
@@ -40,6 +40,7 @@ import threading
 import time
 import tty
 
+import decision_model
 import robot
 import skills
 import state as state_mod
@@ -71,7 +72,7 @@ def make_parser():
     p.add_argument('--backend', choices=('ursim', 'fake'), default='ursim',
                    help='simulator only: URSim, or fake_arm.py (no URSim, instant moves)')
     p.add_argument('--decider', choices=('rules', 'model'), default='rules')
-    p.add_argument('--model', default='vllm-sr/Decision-2.0-Sol-2B')
+    p.add_argument('--model', default=decision_model.MODEL)
     p.add_argument('--device', choices=('auto', 'cuda', 'cpu'), default='auto')
     p.add_argument('--bf16-resident', action='store_true')
     p.add_argument('--instruction', help='task text; default: the scenario\'s instruction')

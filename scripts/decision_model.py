@@ -1,4 +1,4 @@
-"""Decider backed by a vllm-sr Decision 2.0 model (System One: typed answers, no text).
+"""Decider backed by a vllm-sr decision model (System One: typed answers, no text).
 
 One system_one call per step, with three questions about the JSON state:
 
@@ -9,21 +9,26 @@ One system_one call per step, with three questions about the JSON state:
 The answer gives a probability for every option (next_skill) and a yes
 probability for each noul question:
 
-    {"answers": {"next_skill": {"choice": "place:C", "confidence": 0.29,
-                                "probabilities": {"place:C": 0.59, ...}, "type": "choice"},
-                 "last_ok": {"noul": 0.57, "type": "noul"},
-                 "task_done": {"noul": 0.74, "type": "noul"}},
-     "model": "Decision-2.0-Sol-2B", "usage": {"input_tokens": 1328, "output_tokens": 0}}
+    {"answers": {"next_skill": {"choice": "place:A", "confidence": 0.49,
+                                "probabilities": {"place:A": 0.52, "place:C": 0.43, ...}, "type": "choice"},
+                 "last_ok": {"noul": 0.11, "type": "noul"},
+                 "task_done": {"noul": 0.20, "type": "noul"}},
+     "model": "d3-lite", "usage": {"input_tokens": 1341, "output_tokens": 0}}
 
-Loading: AutoModel.from_pretrained(model, trust_remote_code=True). The model's
-own runtime fixes the numerics (BF16 autocast on a GPU, FP32 on the CPU) and
-takes no quantization_config. Sol-2B does not fit the 4 GB laptop GPU, even
-with bf16_resident; on the CPU it needs about 9 GB of RAM and about 30 s per
-decision. Needs requirements-model.txt.
+Loading: AutoModel.from_pretrained(model, trust_remote_code=True); each
+model's own runtime fixes its numerics and takes no quantization_config.
+
+    vllm-sr/d3-lite (default)       0.85 B; on the 4 GB laptop GPU: 1.6 GB loaded,
+                                    1.8 GB peak, about 0.5 s per decision
+    vllm-sr/Decision-2.0-Sol-2B     1.88 B; does not fit the 4 GB GPU, even with
+                                    --bf16-resident; on the CPU about 9 GB of RAM
+                                    and 30-55 s per decision
+
+Needs requirements-model.txt.
 
 As a module:
     from decision_model import ModelDecider
-    decider = ModelDecider('vllm-sr/Decision-2.0-Sol-2B', device='cpu')
+    decider = ModelDecider()                    # d3-lite, GPU if there is one
     decision = decider.decide(state, options)
 """
 
@@ -36,13 +41,13 @@ from decision import Decision, describe
 # Configuration
 # ---------------------------------------------------------------------------
 
-MODEL = 'vllm-sr/Decision-2.0-Sol-2B'
+MODEL = 'vllm-sr/d3-lite'
 DEVICES = ('auto', 'cuda', 'cpu')
 QUESTION_NEXT = 'Which skill should the robot run next to carry out the instruction?'
 QUESTION_LAST_OK = 'Did the last skill have its intended effect?'
 QUESTION_DONE = 'Has the instruction been carried out?'
-OOM_HINT = ('{model} does not fit in GPU memory. Run it on the CPU with --device cpu '
-            '(about 9 GB of RAM for Sol-2B), or add --bf16-resident.')
+OOM_HINT = ('{model} does not fit in GPU memory: use a smaller model (the default, '
+            f'{MODEL}, fits a 4 GB GPU) or run it on the CPU with --device cpu.')
 
 # ---------------------------------------------------------------------------
 # Questions and answers
@@ -89,6 +94,14 @@ def parse(raw, options, asked=None, latency_s=0.0, vram_peak_mb=None):
 # ---------------------------------------------------------------------------
 
 
+def _device_of(model):
+    """Where the model runs: the runtime's own answer if it has one, else its parameters."""
+    if hasattr(model, '_runtime_device'):        # Decision 2.0
+        return str(model._runtime_device())
+    param = next(model.parameters(), None)       # d3
+    return str(param.device) if param is not None else 'cpu'
+
+
 class ModelDecider:
     name = 'model'
 
@@ -104,7 +117,7 @@ class ModelDecider:
             self.model = AutoModel.from_pretrained(model, **kw)
         except torch.OutOfMemoryError:
             raise SystemExit(OOM_HINT.format(model=model))
-        self.device = str(self.model._runtime_device())
+        self.device = _device_of(self.model)
         self.cuda = self.device.startswith('cuda')
 
     def decide(self, state, options):
