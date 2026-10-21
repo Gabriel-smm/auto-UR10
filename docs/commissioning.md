@@ -75,6 +75,11 @@ For the blocks, [`fake_bench.py`](../scripts/fake_bench.py) keeps a bench in mem
 - **At force 0, a dropped object does not show in the status.** The bench first modelled a slip as the status turning to gOBJ 3. On the real 2F-85, closed with force 0 on a 73 mm object (gOBJ 2, pos 67, current 0), the object was pulled out and the status stayed gOBJ 2, pos 67. With no holding current the gripper cannot sense the loss. The same test at force 100 gave current 5 while holding, and when the object was pulled out the fingers closed fully and the status turned to gOBJ 3, pos 228, with the same stop position (67) as at force 0. The bench now chooses from the force of the close: silent at force 0, a status change with force. Gripping with force is what makes a dropped block detectable; `gripper.py` still closes at force 0 by default.
 - **Width is not linear in pos.** A straight line over the 85 mm stroke gave pos 35 for 73 mm; the gripper stopped at 67. The bench now interpolates in a calibration table that holds the measured point, and more points are to be added as blocks are measured.
 
+Two things came up when the bench skills were first run in URSim:
+
+- **Straight lines across the bench can break the shoulder limit.** The shoulder is limited to −51° in Normal mode. A `moveL` from above slot C to `home` would have taken it to −34°; `safety.preflight` refused it before anything moved. Long moves (transits) are therefore joint moves (`moveJ`), checked at both ends against the joint limits and at sampled poses against the planes.
+- **`getForwardKinematics(q)` in ur_rtde 1.6.5 is wrong without the TCP offset.** Called with joint angles only, after a `getInverseKinematics` call, it returned poses metres off (and checks reported a plane 1.6 m behind). Passing the TCP offset explicitly, `getForwardKinematics(q, tcp)`, returned the right pose. The skills always pass it.
+
 ## 9. Result
 
 The arm and the gripper are now controlled from one Python script: the arm over Ethernet with RTDE, the gripper over RS-485 through the adapter and wiring that were already in the cart. No parts were bought.

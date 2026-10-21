@@ -54,6 +54,8 @@ flowchart LR
 | [`scripts/fake_gripper.py`](scripts/fake_gripper.py) | Stand-in for `gripper.py` for simulator runs: same functions and status keys, state in memory, close result set by a scenario (`wide`, `narrow`, none). Opens no port. |
 | [`scripts/fake_bench.py`](scripts/fake_bench.py) | Simulated bench for simulator runs: named slots with grip poses and blocks, what the gripper reports on a close or open at the TCP position, and seeded fault injection (slip, miss, width noise, ghost block) logged as JSON lines. |
 | [`scripts/slots.json`](scripts/slots.json) | Taught TCP poses of the bench slots `A`, `B`, `C`, `bin` and `home` (base frame, m and rotation vector), and `approach_z`, the height above a slot from which the skills descend. |
+| [`scripts/skills.py`](scripts/skills.py) | Skills for the decision loop: `pick`, `place`, `home`, `open_gripper`. Each is planned (approach above the slot, straight-line lift/descend, joint-move transit), checked segment by segment before moving, and returns measured gripper readings. |
+| [`scripts/fake_arm.py`](scripts/fake_arm.py) | In-memory stand-in for the RTDE control and receive interfaces, for offline tests and `--backend fake`. |
 | [`scripts/grip_width.py`](scripts/grip_width.py) | Block width <-> 2F-85 finger position, interpolated between calibration points (one measured: 73 mm at pos 67). |
 | [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
 | [`scenarios/`](scenarios/) | Bench scenarios for `fake_bench.py` (JSON): blocks per slot, seed and faults, from nominal runs to slips, misses and ghost blocks. |

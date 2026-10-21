@@ -481,6 +481,44 @@ The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `
 | `update(xyz)` | Applies a pending slip; returns the new `(gOBJ, pos)` with `slip_signal` `status`, else `None`. |
 | `blocks()`, `binned`, `lost`, `events`, `injected`, `log_info()` | State for checks and logs. |
 
+### `scripts/skills.py`
+
+The actions a decider can choose, each planned and checked before anything moves. It is a module, not a command; [`run_task.py`](#scriptsrun_taskpy) uses it.
+
+| Skill | Segments | Gripper |
+|---|---|---|
+| `pick(slot)` | lift (if below the approach height), transit to the approach point above the slot, descend to the slot pose; after the gripper: retreat to the approach point | close (force 100) |
+| `place(slot)` | the same | open |
+| `home()` | lift, transit to `home` | — |
+| `open_gripper()` | none | open |
+
+The approach point is the slot pose raised by `approach_z` from [`slots.json`](../scripts/slots.json) (0.10 m) along the base Z axis. Segments of zero length are skipped.
+
+| Motion | Used for | Speed | Checked with |
+|---|---|---|---|
+| `moveL` (straight line) | lift, descend, retreat | 0.1 m/s, 0.15 m/s² | `safety.preflight`: active TCP, speed, plane margins and joint headroom along the line |
+| `moveJ` (joint interpolation) | transit | 0.25 rad/s, 0.5 rad/s² | `check_movej`: active TCP; joint headroom at both ends (each joint moves linearly, so the ends are its extremes); plane margins at 50 poses along the move, from the controller's forward kinematics |
+
+Transits are joint moves because a straight line between distant poses can take the shoulder past its narrowed limit (−51°): in URSim, the line from above slot C to `home` reached −34°. The joint targets come from the controller's inverse kinematics, chained from the current joint angles.
+
+`plan(cell, skill, arg)` returns the segments (`kind`, `motion`, `from`, `to`, `q_to`), the gripper action, the speeds and force, and one preflight entry per segment (`problems` and the printed `report`). `ok` is false if any segment has a problem; `execute` then moves nothing and returns the reason. `execute` also refuses a plan if the arm has moved more than 5 mm since it was made.
+
+The result holds only values read at the end of the skill:
+
+```json
+{"skill": "pick", "args": "A", "ok": true, "reason": null,
+ "gripper": {"obj": 2, "pos": 140, "width_mm": 39.9},
+ "tcp": [0.26359, 0.35385, 0.03192, 2.3187, 2.0941, 0.0978], "duration_s": 6.7}
+```
+
+`width_mm` is `grip_width.width_for(pos)` when gOBJ is 2 (stopped on an object), else `null`. Skills make no decisions: no retries, no choice of the next skill.
+
+Moves are asynchronous. Setting the abort event, or Ctrl-C, calls `stopL` or `stopJ` (2.0 m/s² or rad/s²) and returns `ok` false, reason `aborted`; the arm stays where it stopped.
+
+[`scripts/fake_arm.py`](../scripts/fake_arm.py) stands in for `RTDEControlInterface` and `RTDEReceiveInterface` in the offline tests and with `run_task.py --backend fake`: moves end at once (or after a set time), the active TCP is the expected one, and its kinematics keep every joint far from its limits, so the plane checks run as against the robot.
+
+> **Unverified on the real robot:** every skill. Tested in URSim (pick, place, home, abort during a moveJ) and offline.
+
 ### Offline tests
 
 The simulation stand-ins have `pytest` tests in [`tests/`](../tests/). They need no robot, no URSim and no gripper: the TCP position is a stand-in value. From the repository root:
