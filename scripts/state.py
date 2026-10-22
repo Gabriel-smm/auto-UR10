@@ -14,7 +14,8 @@ State:
     {"step": 3, "instruction": "...",
      "gripper": {"obj": 2, "meaning": "stopped on an object", "pos": 184, "width_mm": 20.0},
      "holding": true, "tcp_at": "B",
-     "slots": {"A": {"picks": 1, "gripped": 1, "empty": 0, "placed": 0, "last": "..."}, ...},
+     "slots": {"A": {"picks": 1, "gripped": 1, "empty": 0, "placed": 0, "event": "taken",
+                     "last": "..."}, ...},
      "history": [{"step": 2, "skill": "pick", "args": "B", "ok": true, "reason": null,
                   "gripper": {...}, "tcp_at": "B", "duration_s": 6.3}, ...]}
 
@@ -35,6 +36,7 @@ OBJ_MEANING = {0: 'moving', 1: 'stopped on an object while opening',
 OBJ_STOPPED = 2
 NOT_SLOTS = ('home',)   # poses in slots.json that are not bench slots
 BINS = ('bin',)
+EVENTS = ('taken', 'empty', 'released', 'failed')   # latest event at a slot, from its last result
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -80,7 +82,7 @@ class Tracker:
         self.history = history
         self.step = 0
         self.results = []
-        self.slots = {n: {'picks': 0, 'gripped': 0, 'empty': 0, 'placed': 0, 'last': None}
+        self.slots = {n: {'picks': 0, 'gripped': 0, 'empty': 0, 'placed': 0, 'event': None, 'last': None}
                       for n in poses if n not in NOT_SLOTS}
 
     def record(self, result, step=None):
@@ -93,12 +95,17 @@ class Tracker:
             s = self.slots[slot]
             if result['skill'] == 'pick':
                 s['picks'] += 1
-                s['gripped' if result['gripper']['obj'] == OBJ_STOPPED else 'empty'] += 1
+                gripped = result['gripper']['obj'] == OBJ_STOPPED
+                s['gripped' if gripped else 'empty'] += 1
+                s['event'] = 'taken' if gripped else 'empty'
             else:
                 s['placed'] += 1
+                s['event'] = 'released'
             s['last'] = describe(result)
         elif slot in self.slots:
             self.slots[slot]['last'] = describe(result)
+            if not result['ok']:
+                self.slots[slot]['event'] = 'failed'
 
     def next_step(self):
         self.step += 1

@@ -76,7 +76,7 @@ flowchart LR
 | [`scripts/state.py`](scripts/state.py) | Builds the decider's state from real readings only (gripper, TCP slot, per-slot counts, last 5 skill results) and the valid options. |
 | [`scripts/decision.py`](scripts/decision.py) | The `Decision` every decider returns, and the plain-language option descriptions. |
 | [`scripts/decision_rules.py`](scripts/decision_rules.py) | Hand-written baseline decider: a state machine over the same state the model sees. |
-| [`scripts/decision_model.py`](scripts/decision_model.py) | Decider backed by a vllm-sr decision model (default `vllm-sr/d3-lite`, which fits the 4 GB GPU): one `system_one` call per step with `next_skill`, `last_ok` and `task_done`. |
+| [`scripts/decision_model.py`](scripts/decision_model.py) | Decider backed by a vllm-sr decision model (default `vllm-sr/d3-lite`, which fits the 4 GB GPU): one `system_one` call per step with `next_skill`, `last_ok` and `task_done`, over `view(state)`: what is known about each slot, without the action history. |
 | `requirements-model.txt` | Extra dependencies for the model decider: `torch`, `transformers>=5.17`, `accelerate`, `safetensors`, and `pillow`, `torchvision`, `opencv-python-headless` (imported by d3). |
 | `pytest.ini` | Registers the `model` test marker and leaves those tests out of the default run. |
 | [`scripts/run_task.py`](scripts/run_task.py) | Runs one decision episode with a terminal panel: state, option probabilities, plan and preflight before moving, result, and (simulator) the bench truth. Step mode confirms every skill; auto and headless are simulator-only. Logs every step to `logs/*.jsonl`. |

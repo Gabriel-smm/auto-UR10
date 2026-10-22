@@ -44,15 +44,15 @@ def describe(option):
     """Short description of an option, as shown to the model."""
     skill, arg = split(option)
     if skill == 'pick':
-        return (f'Move above slot {arg}, descend, close the gripper on whatever is there, '
-                'and lift back above the slot.')
+        return (f'Take the block that is in {arg} into the empty gripper. '
+                f'Only useful while a block is still believed to be in {arg}.')
     if skill == 'place' and arg == 'bin':
-        return 'Carry the held object above the bin, descend, open the gripper to drop it, and lift back.'
+        return 'Drop the block now held into the bin.'
     if skill == 'place':
-        return (f'Carry the held object above slot {arg}, descend, open the gripper to leave it '
-                'there, and lift back.')
+        return f'Set the block now held down in {arg} and let go of it.'
     if skill == 'home':
-        return 'Move to the home pose, clear of the bench. Does not change the gripper.'
+        return 'Move clear of the bench to the home pose, without changing the gripper.'
     if skill == 'done':
-        return 'Stop: the instruction has been carried out, or nothing more can be done.'
+        return ('Stop: the instruction is fully carried out, or every slot has been checked '
+                'and nothing is left to do.')
     raise ValueError(f'unknown option {option!r}')

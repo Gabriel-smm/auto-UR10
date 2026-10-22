@@ -1,10 +1,18 @@
 """Decider backed by a vllm-sr decision model (System One: typed answers, no text).
 
-One system_one call per step, with three questions about the JSON state:
+One system_one call per step, with three questions. The model does not see the
+Tracker state itself but view(state): what is known about each slot, without
+the action history, the option words (pick, place) or the status codes. The
+model leans towards options whose words the state repeats, so "pick A" in the
+history pulled it back to A:
+
+    {"instruction": "Move the block in A to C.", "gripper": "open, empty",
+     "blocks_removed_from": ["A"], "blocks_put_in": ["C"], "blocks_in_bin": 0,
+     "found_empty": [], "not_visited_yet": ["B"]}
 
     next_skill  choice  criteria: the valid options, each with a short description
-    last_ok     noul    Did the last skill have its intended effect?
-    task_done   noul    Has the instruction been carried out?
+    last_ok     noul    Did the most recent action do what it was meant to?
+    task_done   noul    Do the blocks' current positions already satisfy the instruction?
 
 The answer gives a probability for every option (next_skill) and a yes
 probability for each noul question:
@@ -36,6 +44,7 @@ import json
 import time
 
 from decision import Decision, describe
+from state import BINS, OBJ_STOPPED
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -43,11 +52,45 @@ from decision import Decision, describe
 
 MODEL = 'vllm-sr/d3-lite'
 DEVICES = ('auto', 'cuda', 'cpu')
-QUESTION_NEXT = 'Which skill should the robot run next to carry out the instruction?'
-QUESTION_LAST_OK = 'Did the last skill have its intended effect?'
-QUESTION_DONE = 'Has the instruction been carried out?'
+QUESTION_NEXT = 'Given where the blocks are now and what the instruction asks, which action comes next?'
+QUESTION_LAST_OK = ('Did the most recent action do what it was meant to (for example, the gripper '
+                    'closed on a block when taking one)?')
+QUESTION_DONE = "Do the blocks' current positions already satisfy the instruction?"
+OPEN_BELOW = 128        # gripper pos under which an empty gripper reads as open
 OOM_HINT = ('{model} does not fit in GPU memory: use a smaller model (the default, '
             f'{MODEL}, fits a 4 GB GPU) or run it on the CPU with --device cpu.')
+
+# ---------------------------------------------------------------------------
+# What the model sees
+# ---------------------------------------------------------------------------
+
+
+def _gripper(gr):
+    if gr['obj'] == OBJ_STOPPED:
+        return f'holding a block, {gr["width_mm"]} mm wide'
+    if gr['obj'] == 3:
+        return 'open, empty' if gr['pos'] < OPEN_BELOW else 'closed, empty'
+    return gr['meaning']
+
+
+def _slots(state, event):
+    return [n for n, s in state['slots'].items() if s.get('event') == event and n not in BINS]
+
+
+def view(state):
+    """What the model sees: the instruction, the gripper, and what is known about each slot.
+
+    No action history: the model leans towards options whose slot the state
+    names often, so a history of attempts at A pulls it back to A.
+    """
+    return {'instruction': state['instruction'],
+            'gripper': _gripper(state['gripper']),
+            'blocks_removed_from': _slots(state, 'taken'),
+            'blocks_put_in': _slots(state, 'released'),
+            'blocks_in_bin': sum(s['placed'] for n, s in state['slots'].items() if n in BINS),
+            'found_empty': _slots(state, 'empty'),
+            'not_visited_yet': [n for n, s in state['slots'].items()
+                                if s.get('event') in (None, 'failed') and n not in BINS]}
 
 # ---------------------------------------------------------------------------
 # Questions and answers
@@ -121,11 +164,13 @@ class ModelDecider:
         self.cuda = self.device.startswith('cuda')
 
     def decide(self, state, options):
-        asked = questions(options)
+        asked, seen = questions(options), view(state)
         if self.cuda:
             self.torch.cuda.reset_peak_memory_stats()
         t0 = time.time()
-        raw = self.model.system_one(state=json.dumps(state), questions=asked)
+        raw = self.model.system_one(state=json.dumps(seen), questions=asked)
         latency = time.time() - t0
         vram = round(self.torch.cuda.max_memory_allocated() / 2**20, 1) if self.cuda else None
-        return parse(raw, options, asked, latency, vram)
+        decision = parse(raw, options, asked, latency, vram)
+        decision.extra['model_state'] = seen
+        return decision

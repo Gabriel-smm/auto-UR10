@@ -34,6 +34,7 @@ def test_after_pick_state_and_options():
     assert st['holding'] and st['gripper']['obj'] == 2 and st['gripper']['meaning'] == 'stopped on an object'
     assert st['tcp_at'] == 'A'                       # above A, at the approach point
     assert st['slots']['A']['gripped'] == 1 and 'width 39.9 mm' in st['slots']['A']['last']
+    assert st['slots']['A']['event'] == 'taken' and st['slots']['B']['event'] is None
     assert st['history'][-1]['skill'] == 'pick' and st['history'][-1]['tcp_at'] == 'A'
     assert tracker.options(st) == ['place:A', 'place:B', 'place:C', 'place:bin', 'home', 'done']
 
@@ -45,7 +46,7 @@ def test_history_is_limited():
         tracker.next_step()
     st = tracker.build(cell.gripper(), cell.tcp())
     assert len(st['history']) == 5 and st['history'][0]['step'] == 1
-    assert st['slots']['A']['empty'] == 2
+    assert st['slots']['A']['empty'] == 2 and st['slots']['A']['event'] == 'empty'
 
 
 @pytest.mark.parametrize('name', ['mixed_faults_seed1', 'ghost_always', 'slip_always'])

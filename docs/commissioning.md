@@ -82,6 +82,8 @@ Two things came up when the bench skills were first run in URSim:
 
 The Decision model (vllm-sr Decision-2.0-Sol-2B, 1.88 B parameters) does not fit the laptop's 4 GB GPU: loading ran out of memory at about 3.6 GB, also with BF16-resident weights. The model's runtime fixes its own numerics and refuses a bitsandbytes `quantization_config`, so 8-bit loading was not an option. It runs on the CPU instead, at about 30 s per decision and 9 GB of RAM. The default model became vllm-sr/d3-lite (0.85 B, the next generation, same `system_one` interface), which fits the GPU at 1.8 GB peak and answers in about 0.5 s.
 
+The first episodes with d3-lite showed that the model follows words more than meaning. Given the full state, the `pick A` repeated in the history and in the slot summary pulled it back to A: after taking the block from A it chose to put it back in A, and with a gripper that always drops the block it kept trying A. Rewording the history only moved the bias to the next slot it named. What worked was giving the model no history at all, only which slots blocks were taken from, put in, found empty or not visited yet (`view` in [`decision_model.py`](../scripts/decision_model.py)): 10 of 10 test states right, against 4 of 8 with the full state. The probabilities stay low (0.3 to 0.66), and `last_ok` never detected a failed skill. This is checked offline on the fake bench only (see [setup.md](setup.md#scriptsdecision_modelpy)).
+
 ## 9. Result
 
 The arm and the gripper are now controlled from one Python script: the arm over Ethernet with RTDE, the gripper over RS-485 through the adapter and wiring that were already in the cart. No parts were bought.

@@ -72,6 +72,59 @@ def test_questions_from_options():
     assert q['next_skill']['type'] == 'choice' and q['last_ok']['type'] == 'noul'
     assert list(q['next_skill']['criteria']) == ['pick:A', 'place:bin', 'home', 'done']
     assert 'bin' in q['next_skill']['criteria']['place:bin']
+    assert 'blocks are now' in q['next_skill']['instructions']
+
+
+def _view_after(name, *moves, **faults):
+    from episode import setup
+    import skills
+    sc, bench, cell, tracker = setup(name, **faults)
+    for skill, arg in moves:
+        tracker.record(skills.run(cell, skill, arg))
+        tracker.next_step()
+    return decision_model.view(tracker.build(cell.gripper(), cell.tcp()))
+
+
+def test_view_has_no_history_option_words_or_codes():
+    v = _view_after('nominal', ('pick', 'A'), ('place', 'C'))
+    text = json.dumps(v).lower()
+    assert not any(w in text for w in ('pick', 'place', 'obj', '"pos"', 'duration', 'step', 'history'))
+    assert v == {'instruction': 'Move the block in A to C.', 'gripper': 'open, empty',
+                 'blocks_removed_from': ['A'], 'blocks_put_in': ['C'], 'blocks_in_bin': 0,
+                 'found_empty': [], 'not_visited_yet': ['B']}
+
+
+def test_view_while_holding():
+    v = _view_after('nominal', ('pick', 'A'))
+    assert v['gripper'] == 'holding a block, 39.9 mm wide' and v['not_visited_yet'] == ['B', 'C']
+
+
+def test_view_repeated_empty_picks_name_the_slot_once():
+    v = _view_after('slip_always', ('pick', 'A'), ('pick', 'A'))
+    assert v['gripper'] == 'closed, empty' and v['found_empty'] == ['A']
+    assert json.dumps(v).count('"A"') == 1
+
+
+def test_view_bin_count_and_failed_slot_counts_as_not_visited():
+    v = _view_after('full_bench', ('pick', 'A'), ('place', 'bin'))
+    assert v['blocks_in_bin'] == 1 and v['blocks_removed_from'] == ['A'] and v['blocks_put_in'] == []
+    st = {'instruction': 'x', 'gripper': {'obj': 3, 'meaning': '', 'pos': 3, 'width_mm': None},
+          'slots': {'A': {'event': 'failed', 'placed': 0}, 'bin': {'event': None, 'placed': 0}}}
+    assert decision_model.view(st)['not_visited_yet'] == ['A']
+
+
+def test_decide_sends_the_view():
+    class Stub:
+        def system_one(self, state, questions):
+            self.state = state
+            return {'answers': {'next_skill': {'probabilities': {'done': 1.0}}}}
+    decider = object.__new__(decision_model.ModelDecider)
+    decider.model, decider.cuda = Stub(), False
+    from episode import setup
+    sc, bench, cell, tracker = setup('nominal')
+    st = tracker.build(cell.gripper(), cell.tcp())
+    d = decider.decide(st, tracker.options(st))
+    assert json.loads(decider.model.state) == decision_model.view(st) == d.extra['model_state']
 
 
 def test_parse_real_answer():

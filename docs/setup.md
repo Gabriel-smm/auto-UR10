@@ -527,9 +527,10 @@ Builds the state a decider sees, from real readings only: no LLM builds or edits
 {"step": 1, "instruction": "Move the block in A to C.",
  "gripper": {"obj": 2, "meaning": "stopped on an object", "pos": 140, "width_mm": 39.9},
  "holding": true, "tcp_at": "A",
- "slots": {"A": {"picks": 1, "gripped": 1, "empty": 0, "placed": 0,
+ "slots": {"A": {"picks": 1, "gripped": 1, "empty": 0, "placed": 0, "event": "taken",
                  "last": "pick A: gripper stopped on an object, width 39.9 mm"},
-           "B": {"picks": 0, "gripped": 0, "empty": 0, "placed": 0, "last": null}, "...": "..."},
+           "B": {"picks": 0, "gripped": 0, "empty": 0, "placed": 0, "event": null, "last": null},
+           "...": "..."},
  "history": [{"step": 0, "skill": "pick", "args": "A", "ok": true, "reason": null,
               "gripper": {"obj": 2, "pos": 140, "width_mm": 39.9}, "tcp_at": "A", "duration_s": 6.7}]}
 ```
@@ -538,7 +539,7 @@ Builds the state a decider sees, from real readings only: no LLM builds or edits
 |---|---|
 | `gripper`, `holding` | the gripper status read now; `holding` is gOBJ 2 |
 | `tcp_at` | the slot the TCP is at or above (up to its approach height), `home`, or `null` |
-| `slots` | per slot, counted from skill results: picks, picks that ended holding (`gripped`) or on nothing (`empty`), places, and the last result in words |
+| `slots` | per slot, counted from skill results: picks, picks that ended holding (`gripped`) or on nothing (`empty`), places, the latest `event` there (`taken`, `empty`, `released`, `failed`, or `null` if never visited), and the last result in words |
 | `history` | the last 5 skill results |
 
 `options(state)` gives the valid next skills, from the skill library and `slots.json` only: `pick:A`, `pick:B`, `pick:C` when nothing is held; `place:A` … `place:bin` when something is; `home` and `done` always.
@@ -570,15 +571,42 @@ pip install -r requirements-model.txt    # torch, transformers>=5.17, accelerate
 | `vllm-sr/d3-lite` (default) | 0.85 B | GPU: 1.6 GB loaded, 1.8 GB peak; about 0.5 s per decision (3 s for the first) |
 | `vllm-sr/Decision-2.0-Sol-2B` | 1.88 B | does not fit the GPU; CPU: about 9 GB of RAM, 30 to 55 s per decision |
 
-Each step makes one `model.system_one(state=json.dumps(state), questions=...)` call:
+Each step makes one `model.system_one(state=json.dumps(view(state)), questions=...)` call. The model does not see the full state but `view(state)`, a short summary of what is known about each slot:
+
+```json
+{"instruction": "Move the block in A to C.", "gripper": "open, empty",
+ "blocks_removed_from": ["A"], "blocks_put_in": ["C"], "blocks_in_bin": 0,
+ "found_empty": [], "not_visited_yet": ["B"]}
+```
+
+| Field | From |
+|---|---|
+| `gripper` | `holding a block, <width> mm wide` (gOBJ 2); `open, empty` or `closed, empty` (gOBJ 3, pos below or above 128); otherwise the status meaning |
+| `blocks_removed_from`, `blocks_put_in`, `found_empty` | slots (not the bin) whose latest `event` is `taken`, `released`, `empty` |
+| `blocks_in_bin` | places into the bin |
+| `not_visited_yet` | slots (not the bin) with no event yet, or whose last skill failed |
+
+The model leans towards options whose words the state repeats. With the full state, the `pick` / `A` in `history` and `slots.A.last` pulled it back to A: after `pick:A` it chose `place:A`, and in `slip_always` it kept choosing `pick:A`. The view therefore has no action history, no skill names and no status codes, and a slot appears at most once. Adding the last action back made the choices worse. The rules decider, the panel and the log keep the full state; the view is logged in the decision's `extra.model_state`.
+
+Measured on d3-lite (GPU), on 8 states from the `nominal`, `full_bench` and `empty_bench` scenarios, plus 2 from `slip_always` for the final view; choice correct:
+
+| Input | Correct | Example |
+|---|---|---|
+| full state (before) | 4/8 | after `pick:A`: `place:A` 0.86; after `place:C`: `pick:A` 0.79 |
+| view with an action history | 6/8 | after `place:C`: `pick:C` 0.73 |
+| `view(state)` | 10/10 | after `pick:A`: `place:C` 0.66; after `place:C`: `done` 0.51; `slip_always` after `pick:A`: `pick:C` |
+
+The choice is right but its probability is often 0.3 to 0.66, below the default `--threshold` of 0.7, so in auto mode those steps abstain. `last_ok` is close to 0 in every case (also with the full state and with the last action in the view): d3-lite's `last_ok` does not detect failed skills, and the `detected` column of `summarize.py` should be read with that in mind.
 
 | Question | Type | Asked |
 |---|---|---|
-| `next_skill` | `choice` | Which skill should the robot run next to carry out the instruction? The criteria are the valid options, each with a short description (`decision.describe`). |
-| `last_ok` | `noul` (yes/no) | Did the last skill have its intended effect? |
-| `task_done` | `noul` | Has the instruction been carried out? |
+| `next_skill` | `choice` | Given where the blocks are now and what the instruction asks, which action comes next? The criteria are the valid options, each with a short description (`decision.describe`), e.g. `pick:A`: "Take the block that is in A into the empty gripper. Only useful while a block is still believed to be in A."; `done`: "Stop: the instruction is fully carried out, or every slot has been checked and nothing is left to do." |
+| `last_ok` | `noul` (yes/no) | Did the most recent action do what it was meant to (for example, the gripper closed on a block when taking one)? |
+| `task_done` | `noul` | Do the blocks' current positions already satisfy the instruction? |
 
-A real answer (d3-lite, scenario `nominal`, after `pick:A`):
+> **Unverified:** the view has been checked offline against the fake bench only, not yet in a full `run_task.py --sim` episode or on the robot.
+
+A real answer to the old full-state input (d3-lite, scenario `nominal`, after `pick:A`), kept as a parsing fixture:
 
 ```json
 {"answers": {"next_skill": {"choice": "place:A", "confidence": 0.489, "type": "choice",
