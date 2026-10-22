@@ -1,0 +1,29 @@
+{
+  "name": "novel_paraphrase",
+  "description": "A move written differently from \"Move the block in X to Y\"; the rules do not parse it.",
+  "instruction": "Take the block that is at C and leave it at A.",
+  "expected": {
+    "slots": {
+      "A": "mid1",
+      "B": null,
+      "C": null
+    },
+    "binned": []
+  },
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {},
+    "B": {},
+    "C": {
+      "block": {
+        "id": "mid1",
+        "width_mm": 30
+      }
+    },
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}

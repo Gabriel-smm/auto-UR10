@@ -1,0 +1,41 @@
+{
+  "name": "novel_wide_to_bin",
+  "description": "Only the 40 mm block goes to the bin; the width is known only once a block is gripped. The rules match \"every block ... in the bin\" and bin all three.",
+  "instruction": "Put every block wider than 35 mm in the bin; put the other blocks back where they were.",
+  "expected": {
+    "slots": {
+      "A": "narrow1",
+      "B": null,
+      "C": "mid1"
+    },
+    "binned": [
+      "wide1"
+    ]
+  },
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
+    "B": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "C": {
+      "block": {
+        "id": "mid1",
+        "width_mm": 30
+      }
+    },
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}

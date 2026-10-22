@@ -1,0 +1,36 @@
+{
+  "name": "novel_clear_B",
+  "description": "Blocks at A and B; only B is to be cleared. No rule in decision_rules.py covers it.",
+  "instruction": "Clear slot B: put its block in the bin.",
+  "expected": {
+    "slots": {
+      "A": "wide1",
+      "B": null,
+      "C": null
+    },
+    "binned": [
+      "narrow1"
+    ]
+  },
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}

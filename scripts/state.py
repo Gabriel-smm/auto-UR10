@@ -15,7 +15,7 @@ State:
      "gripper": {"obj": 2, "meaning": "stopped on an object", "pos": 184, "width_mm": 20.0},
      "holding": true, "tcp_at": "B",
      "slots": {"A": {"picks": 1, "gripped": 1, "empty": 0, "placed": 0, "event": "taken",
-                     "last": "..."}, ...},
+                     "width_mm": 39.9, "last": "..."}, ...},
      "history": [{"step": 2, "skill": "pick", "args": "B", "ok": true, "reason": null,
                   "gripper": {...}, "tcp_at": "B", "duration_s": 6.3}, ...]}
 
@@ -82,7 +82,9 @@ class Tracker:
         self.history = history
         self.step = 0
         self.results = []
-        self.slots = {n: {'picks': 0, 'gripped': 0, 'empty': 0, 'placed': 0, 'event': None, 'last': None}
+        self.held_width = None      # width of the block taken by the last gripped pick
+        self.slots = {n: {'picks': 0, 'gripped': 0, 'empty': 0, 'placed': 0, 'event': None,
+                          'width_mm': None, 'last': None}
                       for n in poses if n not in NOT_SLOTS}
 
     def record(self, result, step=None):
@@ -98,9 +100,10 @@ class Tracker:
                 gripped = result['gripper']['obj'] == OBJ_STOPPED
                 s['gripped' if gripped else 'empty'] += 1
                 s['event'] = 'taken' if gripped else 'empty'
+                s['width_mm'] = self.held_width = result['gripper']['width_mm'] if gripped else None
             else:
                 s['placed'] += 1
-                s['event'] = 'released'
+                s['event'], s['width_mm'], self.held_width = 'released', self.held_width, None
             s['last'] = describe(result)
         elif slot in self.slots:
             self.slots[slot]['last'] = describe(result)

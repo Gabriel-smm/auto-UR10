@@ -35,6 +35,9 @@ def test_after_pick_state_and_options():
     assert st['tcp_at'] == 'A'                       # above A, at the approach point
     assert st['slots']['A']['gripped'] == 1 and 'width 39.9 mm' in st['slots']['A']['last']
     assert st['slots']['A']['event'] == 'taken' and st['slots']['B']['event'] is None
+    assert st['slots']['A']['width_mm'] == 39.9
+    tracker.record(skills.place(cell, 'C'))
+    assert tracker.slots['C']['event'] == 'released' and tracker.slots['C']['width_mm'] == 39.9
     assert st['history'][-1]['skill'] == 'pick' and st['history'][-1]['tcp_at'] == 'A'
     assert tracker.options(st) == ['place:A', 'place:B', 'place:C', 'place:bin', 'home', 'done']
 

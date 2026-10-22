@@ -1,0 +1,34 @@
+{
+  "name": "novel_two_moves",
+  "description": "Two moves in one instruction; the rules read only the first.",
+  "instruction": "Move the block in A to C, then the block in B to A.",
+  "expected": {
+    "slots": {
+      "A": "narrow1",
+      "B": null,
+      "C": "wide1"
+    },
+    "binned": []
+  },
+  "seed": 1,
+  "slots_file": "../scripts/slots.json",
+  "slots": {
+    "A": {
+      "block": {
+        "id": "wide1",
+        "width_mm": 40
+      }
+    },
+    "B": {
+      "block": {
+        "id": "narrow1",
+        "width_mm": 20
+      }
+    },
+    "C": {},
+    "bin": {
+      "bin": true
+    }
+  },
+  "faults": {}
+}

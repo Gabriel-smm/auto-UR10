@@ -441,7 +441,7 @@ Scenario file (JSON):
  "slip_signal": "auto"}
 ```
 
-An optional `"description"` is ignored by the code. `"instruction"` is the task given to the decider by [`run_task.py`](#scriptsrun_taskpy), and `"expected"` is the bench at the end of a successful episode: the block id (or `null`) per slot, and the ids that should be in the bin. Every scenario uses one of two instructions: "Put every block on the bench in the bin." or "Move the block in X to Y." (`nominal`, `single_A`, `single_B`, `single_C`). Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`, and `approach_z`, the height (m, base frame) above a slot from which the [skills](#scriptsskillspy) descend (`default` 0.10, or per slot name). Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
+An optional `"description"` is ignored by the code. `"instruction"` is the task given to the decider by [`run_task.py`](#scriptsrun_taskpy), and `"expected"` is the bench at the end of a successful episode: the block id (or `null`) per slot, and the ids that should be in the bin. The fault scenarios use one of two instructions, the ones [`decision_rules.py`](#scriptsdecision_rulespy) understands: "Put every block on the bench in the bin." or "Move the block in X to Y." (`nominal`, `single_A`, `single_B`, `single_C`). The `novel_*` scenarios have no faults and instructions the rules cannot carry out (no rule, or a regex that misreads them); they measure whether a decider follows an instruction written in free text. Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`, and `approach_z`, the height (m, base frame) above a slot from which the [skills](#scriptsskillspy) descend (`default` 0.10, or per slot name). Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
 
 ```bash
 python scripts/fake_bench.py scenarios/nominal.json    # print a scenario
@@ -461,6 +461,11 @@ The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `
 | `mixed_faults_seed2` | 2 | As mixed_faults_seed1, other seed. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
 | `mixed_faults_seed3` | 3 | As mixed_faults_seed1, other seed. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
 | `narrow_only` | 1 | Two 15 mm blocks. | none |
+| `novel_clear_B` | 1 | "Clear slot B: put its block in the bin." Blocks at A and B. | none |
+| `novel_except_A` | 1 | "Put every block in the bin except the one in A." Blocks at A, B, C. | none |
+| `novel_paraphrase` | 1 | "Take the block that is at C and leave it at A." | none |
+| `novel_two_moves` | 1 | "Move the block in A to C, then the block in B to A." | none |
+| `novel_wide_to_bin` | 1 | "Put every block wider than 35 mm in the bin; put the other blocks back where they were." 20, 40 and 30 mm blocks; the width is known only once a block is gripped. | none |
 | `nominal` | 1 | A wide block at A, a narrow one at B, C empty, no faults. | none |
 | `similar_widths` | 1 | 30 and 32 mm blocks with 2 mm noise: the widths overlap. | `width_noise_mm` 2 |
 | `single_A` | 1 | One wide block at A. | none |
@@ -539,7 +544,7 @@ Builds the state a decider sees, from real readings only: no LLM builds or edits
 |---|---|
 | `gripper`, `holding` | the gripper status read now; `holding` is gOBJ 2 |
 | `tcp_at` | the slot the TCP is at or above (up to its approach height), `home`, or `null` |
-| `slots` | per slot, counted from skill results: picks, picks that ended holding (`gripped`) or on nothing (`empty`), places, the latest `event` there (`taken`, `empty`, `released`, `failed`, or `null` if never visited), and the last result in words |
+| `slots` | per slot, counted from skill results: picks, picks that ended holding (`gripped`) or on nothing (`empty`), places, the latest `event` there (`taken`, `empty`, `released`, `failed`, or `null` if never visited), `width_mm` of the block taken from or left there (as measured when it was gripped), and the last result in words |
 | `history` | the last 5 skill results |
 
 `options(state)` gives the valid next skills, from the skill library and `slots.json` only: `pick:A`, `pick:B`, `pick:C` when nothing is held; `place:A` … `place:bin` when something is; `home` and `done` always.
