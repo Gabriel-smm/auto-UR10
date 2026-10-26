@@ -1,4 +1,4 @@
-"""Skills for the bench: pick, place, home, open_gripper.
+"""Skills for the bench: the primitives a decider chooses, and pick/place built from them.
 
 Each skill is planned, then executed. The plan holds the segments and the
 safety checks for each, computed before anything moves; a plan that fails a
@@ -13,11 +13,21 @@ safety.preflight. A moveJ is checked against the joint limits at both ends
 planes at poses sampled along it with the controller's forward kinematics. The result
 holds only measured values: the gripper status and TCP pose read at the end.
 
-    pick(slot)     lift to the approach height, move above the slot, descend,
-                   close, lift back to the approach point
+Primitives (the options a decider sees):
+
+    move:X         lift (if below X's approach height), then move to the approach
+                   point above X (A, B, C or bin); the gripper does not change
+    down           from above a slot, straight down to its grip pose
+    up             from a slot, straight up to its approach point
+    close, open    the gripper only; the arm does not move
+    home           lift, then move to the home pose
+
+down and up are refused (nothing moves, ok=False) when the TCP is not above or
+in a slot. Macros, used by tests and scripts but not offered to deciders:
+
+    pick(slot)     move above the slot, descend, close, lift back
     place(slot)    the same, opening instead of closing
-    home()         lift, then move to the home pose
-    open_gripper() open the fingers; the arm does not move
+    open_gripper() open the fingers
 
 The approach point is the slot pose raised by approach_z (slots.json,
 default 0.10 m) along the base Z axis. Skills make no decisions: no retries,
@@ -59,12 +69,15 @@ GRIP_SPEED = 64         # gripper speed (0-255)
 STOP_DECEL = 2.0        # m/s^2 (stopL) or rad/s^2 (stopJ) on abort
 MIN_SEGMENT = 0.001     # m, shorter segments with the same orientation are skipped
 START_TOL = 0.005       # m, the arm must still be this close to the plan's start
+SLOT_TOL = 0.02         # m, horizontal distance for the TCP to be over a slot
+LEVEL_TOL = 0.01        # m, vertical distance for the TCP to be down at a slot's grip pose
 POLL = 0.02             # s, async move polling
 
 POS_OPEN, POS_CLOSED = 0, 255
 OBJ_STOPPED = 2         # gOBJ: stopped on an object while closing
 
-SKILLS = ('pick', 'place', 'home', 'open_gripper')
+PRIMITIVES = ('move', 'down', 'up', 'open', 'close', 'home')
+SKILLS = PRIMITIVES + ('pick', 'place', 'open_gripper')
 
 # ---------------------------------------------------------------------------
 # Cell
@@ -78,6 +91,19 @@ def load_slots(path=SLOTS_FILE):
     approach = data.pop('approach_z', {})
     default = approach.get('default', APPROACH_Z)
     return {n: list(p) for n, p in data.items()}, {n: approach.get(n, default) for n in data}
+
+
+def where(poses, approach, tcp):
+    """(slot, level) of the TCP: level 'down' at the slot's grip pose, 'above' between
+    it and the approach height; (None, None) when not over a slot ('home' is not one)."""
+    for name, pose in poses.items():
+        if name == 'home' or math.dist(tcp[:2], pose[:2]) > SLOT_TOL:
+            continue
+        if abs(tcp[2] - pose[2]) <= LEVEL_TOL:
+            return name, 'down'
+        if pose[2] < tcp[2] <= pose[2] + approach[name] + LEVEL_TOL:
+            return name, 'above'
+    return None, None
 
 
 def slot_at(poses, xyz, tol=0.02):
@@ -129,12 +155,34 @@ def _raised(pose, z):
     return [pose[0], pose[1], max(pose[2], z)] + list(pose[3:])
 
 
+class Refused(Exception):
+    """A skill that cannot be planned from where the arm is (for example down when not above a slot)."""
+
+
+def _slot(cell, arg):
+    if arg not in cell.poses or arg == 'home':
+        raise ValueError(f'unknown slot {arg!r}: use one of {sorted(n for n in cell.poses if n != "home")}')
+    return cell.poses[arg]
+
+
 def _waypoints(cell, skill, arg, start):
-    """(segments before the gripper action, gripper action, segments after)."""
+    """(segments before the gripper action, gripper action, segments after). Raises Refused."""
+    if skill == 'move':
+        target = _slot(cell, arg)
+        above = _raised(target, target[2] + cell.approach[arg])
+        return [('lift', _raised(start, above[2])), ('transit', above)], None, []
+    if skill in ('down', 'up'):
+        slot, level = where(cell.poses, cell.approach, start)
+        if slot is None:
+            raise Refused(f'{skill}: the gripper is not above a slot')
+        target = cell.poses[slot]
+        if skill == 'down':
+            return [('descend', target)], None, []
+        return [('retreat', _raised(target, target[2] + cell.approach[slot]))], None, []
+    if skill in ('open', 'close'):
+        return [], skill, []
     if skill in ('pick', 'place'):
-        if arg not in cell.poses or arg == 'home':
-            raise ValueError(f'unknown slot {arg!r}: use one of {sorted(n for n in cell.poses if n != "home")}')
-        target = cell.poses[arg]
+        target = _slot(cell, arg)
         above = _raised(target, target[2] + cell.approach[arg])
         before = [('lift', _raised(start, above[2])), ('transit', above), ('descend', target)]
         return before, 'close' if skill == 'pick' else 'open', [('retreat', above)]
@@ -176,7 +224,13 @@ def plan(cell, skill, arg=None):
     Each segment: {kind, motion: moveL | moveJ, from, to, q_to, after_gripper}.
     """
     start = cell.tcp()
-    before, action, after = _waypoints(cell, skill, arg, start)
+    try:
+        before, action, after = _waypoints(cell, skill, arg, start)
+    except Refused as e:
+        return {'skill': skill, 'args': arg, 'start': _round(start), 'segments': [], 'gripper': None,
+                'speed': cell.speed, 'accel': cell.accel, 'joint_speed': cell.joint_speed,
+                'joint_accel': cell.joint_accel, 'force': cell.force, 'preflight': [],
+                'ok': False, 'reason': str(e)}
 
     segments, here = [], start
     for i, (kind, pose) in enumerate(before + after):
@@ -267,6 +321,22 @@ def run(cell, skill, arg=None, abort=None):
     return execute(cell, plan(cell, skill, arg), abort)
 
 
+def move(cell, slot, abort=None):
+    return run(cell, 'move', slot, abort)
+
+
+def down(cell, abort=None):
+    return run(cell, 'down', None, abort)
+
+
+def up(cell, abort=None):
+    return run(cell, 'up', None, abort)
+
+
+def close_gripper(cell, abort=None):
+    return run(cell, 'close', None, abort)
+
+
 def pick(cell, slot, abort=None):
     return run(cell, 'pick', slot, abort)
 
@@ -280,4 +350,4 @@ def home(cell, abort=None):
 
 
 def open_gripper(cell, abort=None):
-    return run(cell, 'open_gripper', None, abort)
+    return run(cell, 'open', None, abort)

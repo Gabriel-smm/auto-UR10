@@ -84,6 +84,8 @@ The Decision model (vllm-sr Decision-2.0-Sol-2B, 1.88 B parameters) does not fit
 
 The first episodes with d3-lite showed that the model follows words more than meaning. Given the full state, the `pick A` repeated in the history and in the slot summary pulled it back to A: after taking the block from A it chose to put it back in A, and with a gripper that always drops the block it kept trying A. Rewording the history only moved the bias to the next slot it named. What worked was giving the model no history at all, only which slots blocks were taken from, put in, found empty or not visited yet (`view` in [`decision_model.py`](../scripts/decision_model.py)): 10 of 10 test states right, against 4 of 8 with the full state. The probabilities stay low (0.3 to 0.66), and `last_ok` never detected a failed skill. This is checked offline on the fake bench only (see [setup.md](setup.md#scriptsdecision_modelpy)).
 
+The decision loop then moved from macro skills (`pick:X`, `place:Y`) to primitives (`move:X` to above a slot, `down`, `up`, `open`, `close`), with every option offered at every step and no guard, to see how the model handles each motion. The rules decider, rewritten as goals turned into primitives, kept its 42 of 63 successes on the original scenarios. d3-lite did not: it repeated its first `move` until the step limit. With no guard, a `down` with a closed gripper or onto an occupied slot is not refused; on the real arm the operator's confirmation is the only guard against pushing into a block.
+
 ## 9. Result
 
 The arm and the gripper are now controlled from one Python script: the arm over Ethernet with RTDE, the gripper over RS-485 through the adapter and wiring that were already in the cart. No parts were bought.

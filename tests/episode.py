@@ -27,7 +27,7 @@ def setup(name, seed=None, **faults):
     return sc, bench, cell, tracker
 
 
-def run(decider, name, max_steps=20, seed=None, **faults):
+def run(decider, name, max_steps=60, seed=None, **faults):
     """Returns (scenario, bench, states, decisions)."""
     sc, bench, cell, tracker = setup(name, seed, **faults)
     states, decisions = [], []

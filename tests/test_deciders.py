@@ -25,25 +25,26 @@ def test_rules_succeed(name):
 
 def test_rules_probabilities_and_flags():
     _, _, states, decisions = run(RulesDecider(), 'nominal')
-    assert [d.choice for d in decisions] == ['pick:A', 'place:C', 'done']
+    assert [d.choice for d in decisions] == ['move:A', 'down', 'close', 'up', 'move:C', 'down', 'open', 'done']
     d = decisions[0]
-    assert d.probs['pick:A'] == 1.0 and sum(d.probs.values()) == 1.0
-    assert d.last_ok_prob is None and decisions[1].last_ok_prob == 1.0
+    assert d.probs['move:A'] == 1.0 and sum(d.probs.values()) == 1.0
+    assert d.last_ok_prob is None and decisions[3].last_ok_prob == 1.0        # after the close
     assert decisions[-1].task_done_prob == 1.0 and decisions[0].task_done_prob == 0.0
 
 
 def test_rules_retry_then_give_up_on_miss():
-    sc, bench, _, decisions = run(RulesDecider(), 'miss_always')
-    assert [d.choice for d in decisions] == ['pick:A', 'pick:A', 'pick:B', 'pick:B',
-                                            'pick:C', 'pick:C', 'done']
+    sc, bench, _states, decisions = run(RulesDecider(), 'miss_always')
+    closes = [s['tcp_at'] for s, d in zip(_states, decisions) if d.choice == 'close']
+    assert closes == ['A', 'A', 'B', 'B', 'C', 'C'] and decisions[-1].choice == 'done'
     assert not matches(sc, bench)
 
 
 def test_rules_slip_is_seen_but_block_lost():
     sc, bench, states, decisions = run(RulesDecider(), 'slip_always')
-    after_pick = states[1]
-    assert after_pick['gripper']['obj'] == 3 and not after_pick['holding']     # slip detected
-    assert decisions[1].last_ok_prob == 0.0
+    i = [d.choice for d in decisions].index('up')          # the lift out of A, after the close
+    after_up = states[i + 1]
+    assert after_up['gripper']['obj'] == 3 and not after_up['holding']        # slip detected
+    assert decisions[i + 1].last_ok_prob == 0.0
     assert not matches(sc, bench) and bench.lost
 
 
@@ -89,7 +90,7 @@ def test_view_has_no_history_option_words_or_codes():
     v = _view_after('nominal', ('pick', 'A'), ('place', 'C'))
     text = json.dumps(v).lower()
     assert not any(w in text for w in ('pick', 'place', 'obj', '"pos"', 'duration', 'step', 'history'))
-    assert v == {'instruction': 'Move the block in A to C.', 'gripper': 'open, empty',
+    assert v == {'instruction': 'Move the block in A to C.', 'gripper': 'open, empty', 'arm': 'above C',
                  'blocks_removed_from': ['A'], 'blocks_put_in': ['C'], 'blocks_in_bin': 0,
                  'found_empty': [], 'not_visited_yet': ['B']}
 

@@ -6,7 +6,7 @@ the action history, the option words (pick, place) or the status codes. The
 model leans towards options whose words the state repeats, so "pick A" in the
 history pulled it back to A:
 
-    {"instruction": "Move the block in A to C.", "gripper": "open, empty",
+    {"instruction": "Move the block in A to C.", "gripper": "open, empty", "arm": "above C",
      "blocks_removed_from": ["A"], "blocks_put_in": ["C"], "blocks_in_bin": 0,
      "found_empty": [], "not_visited_yet": ["B"]}
 
@@ -44,7 +44,7 @@ import json
 import time
 
 from decision import Decision, describe
-from state import BINS, OBJ_STOPPED
+from state import BINS, OBJ_STOPPED, OPEN_BELOW
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -56,7 +56,6 @@ QUESTION_NEXT = 'Given where the blocks are now and what the instruction asks, w
 QUESTION_LAST_OK = ('Did the most recent action do what it was meant to (for example, the gripper '
                     'closed on a block when taking one)?')
 QUESTION_DONE = "Do the blocks' current positions already satisfy the instruction?"
-OPEN_BELOW = 128        # gripper pos under which an empty gripper reads as open
 OOM_HINT = ('{model} does not fit in GPU memory: use a smaller model (the default, '
             f'{MODEL}, fits a 4 GB GPU) or run it on the CPU with --device cpu.')
 
@@ -77,6 +76,15 @@ def _slots(state, event):
     return [n for n, s in state['slots'].items() if s.get('event') == event and n not in BINS]
 
 
+def _arm(state):
+    at, level = state.get('tcp_at'), state.get('tcp_level')
+    if at == 'home':
+        return 'at home'
+    if at is None:
+        return 'elsewhere, not over a slot'
+    return f'lowered into {at}' if level == 'down' else f'above {at}'  # not 'down': an option word
+
+
 def view(state):
     """What the model sees: the instruction, the gripper, and what is known about each slot.
 
@@ -85,6 +93,7 @@ def view(state):
     """
     return {'instruction': state['instruction'],
             'gripper': _gripper(state['gripper']),
+            'arm': _arm(state),
             'blocks_removed_from': _slots(state, 'taken'),
             'blocks_put_in': _slots(state, 'released'),
             'blocks_in_bin': sum(s['placed'] for n, s in state['slots'].items() if n in BINS),

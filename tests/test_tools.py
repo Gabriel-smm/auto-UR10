@@ -62,4 +62,4 @@ def test_replay_renders_every_step(tmp_path):
     for e in steps:
         replay.show_step(ui, start, e)
     text = out.getvalue()
-    assert 'decision: pick:A' in text and 'BENCH TRUTH' in text and end['outcome'] == 'success'
+    assert 'decision: move:A' in text and 'BENCH TRUTH' in text and end['outcome'] == 'success'

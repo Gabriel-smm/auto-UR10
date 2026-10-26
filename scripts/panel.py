@@ -81,7 +81,7 @@ def state_panel(state, expanded=False):
                      border_style='blue')
     lines = [f'instruction: {state["instruction"]}',
              f'gripper: {_gripper(state["gripper"])} ({state["gripper"]["meaning"]})   '
-             f'holding: {state["holding"]}   TCP at: {state["tcp_at"]}']
+             f'holding: {state["holding"]}   TCP: {state.get("tcp_level") or ""} {state["tcp_at"]}']
     for name, s in state['slots'].items():
         lines.append(f'  {name:<4} picks {s["picks"]} (gripped {s["gripped"]}, empty {s["empty"]}), '
                      f'placed {s["placed"]}   {s["last"] or ""}')

@@ -8,7 +8,8 @@ position, what the real gripper would report:
     close at a slot with a block    gOBJ 2, pos from the block width; block held
     close anywhere else             gOBJ 3, pos at the requested position
     open at an empty slot           block placed there
-    open at a bin slot              block gone
+    open at a bin slot, or anywhere  block gone
+    above it (a drop into the bin)
     open at an occupied slot or     block dropped (lost)
     away from any slot
 
@@ -179,6 +180,17 @@ class Bench:
         name = min(self.slots, key=lambda n: math.dist(xyz, self.slots[n]['pose'][:3]))
         return name if math.dist(xyz, self.slots[name]['pose'][:3]) <= tol else None
 
+    def bin_below(self, xyz, tol=TOL):
+        """A bin slot the TCP is over (horizontally within tol, anywhere above it), or None.
+
+        A block released above a bin falls into it; above any other slot, away
+        from its grip pose, it is dropped and lost.
+        """
+        for name, s in self.slots.items():
+            if s['bin'] and math.dist(xyz[:2], s['pose'][:2]) <= tol and xyz[2] >= s['pose'][2] - tol:
+                return name
+        return None
+
     def close(self, xyz, target=POS_CLOSED, force=0):
         """Close at xyz toward target; returns (gOBJ, pos) as the gripper would report."""
         tcp = [round(a, 4) for a in xyz]
@@ -228,7 +240,7 @@ class Bench:
     def open(self, xyz, target=POS_OPEN):
         """Open at xyz toward target; returns (gOBJ, pos) as the gripper would report."""
         self.update(xyz)    # a pending slip happens on the way, even if nobody polled
-        name = self.slot_at(xyz)
+        name = self.slot_at(xyz) or self.bin_below(xyz)
         block, outcome = self.held, None
         if block:
             slot = self.slots.get(name)

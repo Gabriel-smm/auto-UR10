@@ -23,7 +23,9 @@ def test_initial_state_and_options():
     assert st['step'] == 0 and st['instruction'] == 'Move the block in A to C.'
     assert st['tcp_at'] == 'home' and not st['holding'] and st['history'] == []
     assert set(st['slots']) == {'A', 'B', 'C', 'bin'}
-    assert tracker.options(st) == ['pick:A', 'pick:B', 'pick:C', 'home', 'done']
+    assert st['tcp_level'] is None
+    assert tracker.options(st) == ['move:A', 'move:B', 'move:C', 'move:bin', 'down', 'up', 'open', 'close',
+                                   'home', 'done']
 
 
 def test_after_pick_state_and_options():
@@ -39,7 +41,7 @@ def test_after_pick_state_and_options():
     tracker.record(skills.place(cell, 'C'))
     assert tracker.slots['C']['event'] == 'released' and tracker.slots['C']['width_mm'] == 39.9
     assert st['history'][-1]['skill'] == 'pick' and st['history'][-1]['tcp_at'] == 'A'
-    assert tracker.options(st) == ['place:A', 'place:B', 'place:C', 'place:bin', 'home', 'done']
+    assert tracker.options(st) == tracker.options()                 # the same list at every step
 
 
 def test_history_is_limited():

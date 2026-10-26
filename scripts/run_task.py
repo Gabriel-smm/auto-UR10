@@ -51,7 +51,7 @@ from decision import split
 # ---------------------------------------------------------------------------
 
 THRESHOLD = 0.7
-MAX_STEPS = 20
+MAX_STEPS = 60          # primitive steps; one block moved is about 8
 REAL_MAX_SPEED = 0.1    # m/s, highest --speed accepted on the real robot
 LOG_DIR = robot.LOG_DIR
 CHECKLIST = [

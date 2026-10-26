@@ -48,10 +48,12 @@ def test_headless_rules_success_and_log(tmp_path, monkeypatch):
     start, steps, last = lines[0], lines[1:-1], lines[-1]
     assert start['type'] == 'start' and start['target'] == 'SIMULATOR' and start['scenario'] == 'nominal'
     assert start['instruction'] == 'Move the block in A to C.' and start['seed'] == 1
-    assert [s['decision']['choice'] for s in steps] == ['pick:A', 'place:C', 'done']
+    assert [s['decision']['choice'] for s in steps] == ['move:A', 'down', 'close', 'up', 'move:C', 'down',
+                                                        'open', 'done']
     assert all(s['operator']['action'] == 'auto' for s in steps)
+    s2 = steps[2]
+    assert s2['plan']['ok'] and s2['result']['ok'] and s2['bench']['held']['id'] == 'wide1'
     s0 = steps[0]
-    assert s0['plan']['ok'] and s0['result']['ok'] and s0['bench']['held']['id'] == 'wide1'
     assert 'bench' not in json.dumps(s0['state'])
     assert last['type'] == 'end' and last['outcome'] == 'success' and last['final_bench']['slots']['C']['id'] == 'wide1'
 
@@ -59,8 +61,9 @@ def test_headless_rules_success_and_log(tmp_path, monkeypatch):
 def test_injected_faults_are_logged_per_step(tmp_path, monkeypatch):
     monkeypatch.setattr(robot, 'LOG_DIR', str(tmp_path / 'bench'))
     end, lines = episode(tmp_path, 'slip_always')
-    first_pick = lines[1]
-    assert [e['fault'] for e in first_pick['injected']] == ['slip']
+    steps = [e for e in lines if e['type'] == 'step']
+    first_up = next(s for s in steps if s['executed'] == 'up')
+    assert [e['fault'] for e in first_up['injected']] == ['slip']
     assert end['outcome'] == 'fail' and not end['match']
 
 

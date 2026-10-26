@@ -7,7 +7,7 @@
 Per decider/model: episodes, outcomes, success rate, decision accuracy,
 abstentions (right or wrong), mean steps, decision latency (median, p95) and
 peak VRAM. Per injected fault type: how often the next decision doubted the
-last skill (detected: last_ok < 0.5), picked the same slot again (retried),
+last skill (detected: last_ok < 0.5), closed the gripper at the same slot again (retried),
 and how often the episode then ended in a wrong 'done'.
 
 Right and wrong are judged against the bench truth before each step (the
@@ -32,6 +32,8 @@ from collections import defaultdict
 
 from rich.console import Console
 from rich.table import Table
+
+from decision import next_primitives
 
 # ---------------------------------------------------------------------------
 # Loading
@@ -61,7 +63,21 @@ def run_logs(paths):
 
 
 def right_choices(bench, expected, state=None):
-    """Options an ideal decider would take, given the bench truth (and what the state lets it know)."""
+    """Options an ideal decider would take, given the bench truth (and what the state lets it know).
+
+    The ideal goals (pick:X, place:Y, done) become the primitives that make
+    progress towards them from where the arm and gripper are
+    (decision.next_primitives). Without a state, or for a log written before
+    the primitives, the goals themselves are returned.
+    """
+    goals = right_goals(bench, expected, state)
+    if goals is None or not state or 'tcp_level' not in state:
+        return goals
+    return {p for goal in goals for p in next_primitives(goal, state)}
+
+
+def right_goals(bench, expected, state=None):
+    """Goals an ideal decider would pursue, given the bench truth."""
     if bench is None or expected is None:
         return None
 
@@ -84,6 +100,9 @@ def right_choices(bench, expected, state=None):
     return right
 
 
+RETRY_WINDOW = 8        # steps after a fault in which a close at the same slot counts as a retry
+
+
 def judge(episode):
     """Per-step judgements and fault reactions for one episode."""
     start, steps = episode[0], [e for e in episode if e['type'] == 'step']
@@ -101,11 +120,12 @@ def judge(episode):
     wrong_done = end['outcome'] == 'fail' and steps and steps[-1]['executed'] == 'done'
     for i, e in enumerate(steps):
         for f in e.get('injected') or []:
-            later = steps[i + 1:i + 3]
+            later = steps[i + 1:i + 1 + RETRY_WINDOW]
             nxt = later[0]['decision'] if later else None
             faults.append({'fault': f['fault'],
                            'detected': bool(nxt and nxt['last_ok_prob'] is not None and nxt['last_ok_prob'] < 0.5),
-                           'retried': any(s['executed'] == f'pick:{f["slot"]}' for s in later),
+                           'retried': any(s['executed'] == 'close' and s['state'].get('tcp_at') == f['slot']
+                                          or s['executed'] == f'pick:{f["slot"]}' for s in later),
                            'wrong_done': bool(wrong_done)})
     return start, end, judged, faults
 

@@ -490,14 +490,24 @@ The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `
 
 The actions a decider can choose, each planned and checked before anything moves. It is a module, not a command; [`run_task.py`](#scriptsrun_taskpy) uses it.
 
-| Skill | Segments | Gripper |
+The decider chooses among **primitives**, one motion or one gripper action per step:
+
+| Option | Segments | Gripper |
 |---|---|---|
-| `pick(slot)` | lift (if below the approach height), transit to the approach point above the slot, descend to the slot pose; after the gripper: retreat to the approach point | close (force 100) |
-| `place(slot)` | the same | open |
-| `home()` | lift, transit to `home` | — |
-| `open_gripper()` | none | open |
+| `move:A`, `move:B`, `move:C`, `move:bin` | lift (if below the target's approach height), transit to the approach point above the slot; it stops there | — |
+| `down` | from above the slot the TCP is over, straight down to its grip pose | — |
+| `up` | from a slot, straight up to its approach point | — |
+| `close` | none | close (force 100) |
+| `open` | none | open |
+| `home` | lift, transit to `home` | — |
+
+`down` and `up` are refused when the TCP is not over a slot (within 20 mm horizontally): the plan has no segments, `ok` is false and the reason is `the gripper is not above a slot`, so nothing moves. `where(poses, approach, tcp)` gives the slot and level (`down` within 10 mm of the grip pose, `above` between it and the approach height).
+
+Moving one block takes about eight primitives: `move:A`, `down`, `close`, `up`, `move:C`, `down`, `open`, `up`. The macros `pick(slot)` (move above, descend, close, lift back), `place(slot)` and `open_gripper()` remain as functions for scripts and tests but are not offered to deciders.
 
 The approach point is the slot pose raised by `approach_z` from [`slots.json`](../scripts/slots.json) (0.10 m) along the base Z axis. Segments of zero length are skipped.
+
+> **No guard on the options.** Every primitive is offered at every step, to see how a decider behaves. The safety checks (planes, joint limits, TCP, speed) still refuse unsafe paths, but nothing stops a `down` with the gripper closed into a slot that holds a block, or a `down` while holding a block into an occupied slot. In the simulator that only shows up in the bench log; on the real arm it would push the fingers or a block into a block. On the real robot, the operator's confirmation of each step is the only guard against it.
 
 | Motion | Used for | Speed | Checked with |
 |---|---|---|---|
@@ -547,18 +557,27 @@ Builds the state a decider sees, from real readings only: no LLM builds or edits
 | `slots` | per slot, counted from skill results: picks, picks that ended holding (`gripped`) or on nothing (`empty`), places, the latest `event` there (`taken`, `empty`, `released`, `failed`, or `null` if never visited), `width_mm` of the block taken from or left there (as measured when it was gripped), and the last result in words |
 | `history` | the last 5 skill results |
 
-`options(state)` gives the valid next skills, from the skill library and `slots.json` only: `pick:A`, `pick:B`, `pick:C` when nothing is held; `place:A` … `place:bin` when something is; `home` and `done` always.
+`options(state)` gives the same list at every step, from the skill library and `slots.json` only: `move:A`, `move:B`, `move:C`, `move:bin`, `down`, `up`, `open`, `close`, `home`, `done`. The state's `tcp_at` and `tcp_level` (`above`, `down`, or `null`) say where the arm is. Slot events come from the primitives: a `close` while down at a slot is a pick (`taken` or `empty`); an `open` while down at a slot, or anywhere over the bin, after holding a block, is a place (`released`). The macros `pick` and `place` are still recorded the old way.
 
 ### `scripts/decision_rules.py`
 
 The hand-written baseline decider, for comparison with the model. It reads only the state and understands the two scenario instructions:
 
-| Instruction | Rule |
+It first picks a goal:
+
+| Instruction | Goal |
 |---|---|
 | Put every block on the bench in the bin. | holding: `place:bin`; else `pick` the first slot not yet gripped from and not found empty twice; none left: `done` |
-| Move the block in X to Y. | holding: `place:Y`; gripped from X and placed at Y: `done`; X found empty fewer than twice: `pick:X`; else `done` |
+| Move the block in X to Y. | holding: `place:Y`; gripped from X and released at Y: `done`; X found empty fewer than twice: `pick:X`; else `done` |
 
-Its probabilities are 1.0 for the choice and 0.0 for the rest. `last_ok` is judged from the last result (a pick that ended holding, a place that ended open), and `task_done` is 1.0 when it chooses `done`. Every decider implements `decide(state, options) -> Decision` ([`scripts/decision.py`](../scripts/decision.py)): `choice`, `probs`, `last_ok_prob`, `task_done_prob`, `latency_s`, `raw`.
+then takes the first primitive towards it (`decision.next_primitives`, shared with `summarize.py`):
+
+| Goal | Primitives, from where the arm and gripper are |
+|---|---|
+| `pick:X` | `open` if the gripper is closed and empty; `up` if down in another slot; `move:X`; `down`; `close` |
+| `place:Y` | `up` if down in another slot; `move:Y`; `down`; `open` (over the bin it opens from above) |
+
+Its probabilities are 1.0 for the choice and 0.0 for the rest. `last_ok` is judged from the last result: a close that ended holding, an open that ended open, and a move after which a held block is gone (a slip) is a failure. `task_done` is 1.0 when it chooses `done`. Every decider implements `decide(state, options) -> Decision` ([`scripts/decision.py`](../scripts/decision.py)): `choice`, `probs`, `last_ok_prob`, `task_done_prob`, `latency_s`, `raw`.
 
 With the fault-free scenarios, ghost blocks and occasional misses, the rules reach the expected bench. They cannot recover a block that slipped (it is lost) or get past a slot that always misses.
 
@@ -579,7 +598,7 @@ pip install -r requirements-model.txt    # torch, transformers>=5.17, accelerate
 Each step makes one `model.system_one(state=json.dumps(view(state)), questions=...)` call. The model does not see the full state but `view(state)`, a short summary of what is known about each slot:
 
 ```json
-{"instruction": "Move the block in A to C.", "gripper": "open, empty",
+{"instruction": "Move the block in A to C.", "gripper": "open, empty", "arm": "above C",
  "blocks_removed_from": ["A"], "blocks_put_in": ["C"], "blocks_in_bin": 0,
  "found_empty": [], "not_visited_yet": ["B"]}
 ```
@@ -588,6 +607,7 @@ Each step makes one `model.system_one(state=json.dumps(view(state)), questions=.
 |---|---|
 | `gripper` | `holding a block, <width> mm wide` (gOBJ 2); `open, empty` or `closed, empty` (gOBJ 3, pos below or above 128); otherwise the status meaning |
 | `blocks_removed_from`, `blocks_put_in`, `found_empty` | slots (not the bin) whose latest `event` is `taken`, `released`, `empty` |
+| `arm` | `above X`, `lowered into X` (not "down", which is an option word), `at home`, or `elsewhere, not over a slot` |
 | `blocks_in_bin` | places into the bin |
 | `not_visited_yet` | slots (not the bin) with no event yet, or whose last skill failed |
 
@@ -610,6 +630,8 @@ The choice is right but its probability is often 0.3 to 0.66, below the default 
 | `task_done` | `noul` | Do the blocks' current positions already satisfy the instruction? |
 
 > **Unverified:** the view has been checked offline against the fake bench only, not yet in a full `run_task.py --sim` episode or on the robot.
+
+**With the primitives** (fake backend, threshold 0, 30 steps), d3-lite does not get past the first move: in `nominal` it chooses `move:A` (0.90) and then `move:A` again at 0.75 for every remaining step, although the view says `arm: above A`; in `single_B` it repeats `move:B` (0.82); in `full_bench` it repeats `move:bin` (0.37). The table above was measured with the macros (`pick`, `place`).
 
 A real answer to the old full-state input (d3-lite, scenario `nominal`, after `pick:A`), kept as a parsing fixture:
 
@@ -654,7 +676,7 @@ python scripts/run_task.py --instruction "Move the block in A to C."            
 | `--instruction` | the scenario's | required on the real robot |
 | `--mode` | `step` | `step`: confirm every skill; `auto` and `headless` (no panel, log only): simulator only |
 | `--threshold` | 0.7 | below it the step abstains: step mode asks you, auto and headless end the episode as `abstained` |
-| `--max-steps` | 20 | |
+| `--max-steps` | 60 | one moved block takes about 8 primitive steps |
 | `--speed` | 0.1 m/s | moveL speed; at most 0.1 on the real robot |
 | `--seed` | the scenario's | bench seed |
 

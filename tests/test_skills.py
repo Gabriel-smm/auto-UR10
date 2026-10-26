@@ -156,3 +156,69 @@ def test_movej_check_catches_joint_limit():
     q_bad[1] = -0.5                         # shoulder at -29 deg, above the -51 deg limit
     problems, report = skills.check_movej(control, q_from, q_bad)
     assert any('Shoulder' in p for p in problems) and 'joint headroom' in report
+
+
+# ---------------------------------------------------------------------------
+# Primitives: move, down, up, open, close
+# ---------------------------------------------------------------------------
+
+
+def test_move_stops_above_the_slot(cell_for):
+    cell, _ = cell_for()
+    r = skills.move(cell, 'A')
+    assert r['ok'] and r['tcp'][2] == pytest.approx(cell.poses['A'][2] + 0.10, abs=1e-4)
+    assert skills.where(cell.poses, cell.approach, cell.tcp()) == ('A', 'above')
+
+
+def test_down_close_up_picks(cell_for):
+    cell, bench = cell_for()
+    skills.move(cell, 'A')
+    assert skills.down(cell)['ok']
+    assert skills.where(cell.poses, cell.approach, cell.tcp()) == ('A', 'down')
+    r = skills.close_gripper(cell)
+    assert r['gripper']['obj'] == 2 and bench.held['id'] == 'wide1'
+    assert skills.up(cell)['ok'] and skills.where(cell.poses, cell.approach, cell.tcp()) == ('A', 'above')
+
+
+def test_close_above_a_slot_finds_nothing(cell_for):
+    cell, bench = cell_for()
+    skills.move(cell, 'A')
+    r = skills.close_gripper(cell)
+    assert r['gripper']['obj'] == 3 and bench.held is None and bench.blocks()['A']['id'] == 'wide1'
+
+
+def test_down_and_up_refused_when_not_over_a_slot(cell_for):
+    cell, _ = cell_for()                     # at home
+    for skill in ('down', 'up'):
+        plan = skills.plan(cell, skill)
+        assert not plan['ok'] and 'not above a slot' in plan['reason'] and plan['segments'] == []
+        r = skills.execute(cell, plan)
+        assert not r['ok'] and cell.control.moves == []
+
+
+def test_slip_happens_on_up_with_force(cell_for):
+    cell, bench = cell_for(p_slip=1)
+    skills.move(cell, 'A')
+    skills.down(cell)
+    assert skills.close_gripper(cell)['gripper']['obj'] == 2
+    r = skills.up(cell)
+    assert r['gripper']['obj'] == 3 and [e['fault'] for e in bench.injected] == ['slip']
+
+
+def test_open_above_the_bin_bins_the_block(cell_for):
+    cell, bench = cell_for()
+    for step in (lambda: skills.move(cell, 'A'), lambda: skills.down(cell),
+                 lambda: skills.close_gripper(cell), lambda: skills.move(cell, 'bin')):
+        step()
+    skills.open_gripper(cell)                # 10 cm above the bin
+    assert [b['id'] for b in bench.binned] == ['wide1']
+
+
+def test_open_above_a_slot_drops_the_block(cell_for):
+    cell, bench = cell_for()
+    skills.move(cell, 'A')
+    skills.down(cell)
+    skills.close_gripper(cell)
+    skills.move(cell, 'C')
+    skills.open_gripper(cell)                # 10 cm above C, not at its grip pose
+    assert bench.blocks()['C'] is None and [b['id'] for b in bench.lost] == ['wide1']

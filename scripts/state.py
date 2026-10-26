@@ -19,11 +19,16 @@ State:
      "history": [{"step": 2, "skill": "pick", "args": "B", "ok": true, "reason": null,
                   "gripper": {...}, "tcp_at": "B", "duration_s": 6.3}, ...]}
 
-Options come only from the skill library and slots.json: pick:<slot> when
-nothing is held, place:<slot or bin> when something is, home and done always.
+Options come only from the skill library and slots.json, and are all offered
+at every step (no guard): move:<slot or bin>, down, up, open, close, home, done.
+Slot events come from the primitives: a close while down at a slot is a pick
+(taken or empty), an open while down at a slot, or anywhere over the bin,
+after holding a block is a place (released).
 """
 
 import math
+
+from skills import where
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -37,24 +42,34 @@ OBJ_STOPPED = 2
 NOT_SLOTS = ('home',)   # poses in slots.json that are not bench slots
 BINS = ('bin',)
 EVENTS = ('taken', 'empty', 'released', 'failed')   # latest event at a slot, from its last result
+OPEN_BELOW = 128        # gripper pos under which an empty gripper reads as open
+PRIMITIVE_OPTIONS = ('down', 'up', 'open', 'close', 'home', 'done')
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
+def locate(poses, approach, tcp, tol=TOL):
+    """(slot, level) of the TCP: level 'down' or 'above' a slot; ('home', None) at home;
+    (None, None) elsewhere."""
+    slot, level = where(poses, approach, tcp)
+    if slot:
+        return slot, level
+    home = poses.get('home')
+    if home and math.dist(tcp[:3], home[:3]) <= tol:
+        return 'home', None
+    return None, None
+
+
 def tcp_at(poses, approach, tcp, tol=TOL):
     """Slot the TCP is at or above (up to its approach height), 'home', or None."""
-    for name, pose in poses.items():
-        if math.dist(tcp[:2], pose[:2]) > tol:
-            continue
-        top = pose[2] + approach.get(name, 0.0) + tol
-        if name in NOT_SLOTS:
-            if abs(tcp[2] - pose[2]) <= tol:
-                return name
-        elif pose[2] - tol <= tcp[2] <= top:
-            return name
-    return None
+    return locate(poses, approach, tcp, tol)[0]
+
+
+def closed_empty(gripper):
+    """The gripper reached a closed position with nothing in it."""
+    return gripper['obj'] == 3 and gripper['pos'] is not None and gripper['pos'] >= OPEN_BELOW
 
 
 def describe(result):
@@ -83,29 +98,45 @@ class Tracker:
         self.step = 0
         self.results = []
         self.held_width = None      # width of the block taken by the last gripped pick
+        self.holding = False        # the gripper reading after the last skill was gOBJ 2
         self.slots = {n: {'picks': 0, 'gripped': 0, 'empty': 0, 'placed': 0, 'event': None,
                           'width_mm': None, 'last': None}
                       for n in poses if n not in NOT_SLOTS}
 
+    def _pick(self, slot, result):
+        s = self.slots[slot]
+        s['picks'] += 1
+        gripped = result['gripper']['obj'] == OBJ_STOPPED
+        s['gripped' if gripped else 'empty'] += 1
+        s['event'] = 'taken' if gripped else 'empty'
+        s['width_mm'] = self.held_width = result['gripper']['width_mm'] if gripped else None
+
+    def _place(self, slot):
+        s = self.slots[slot]
+        s['placed'] += 1
+        s['event'], s['width_mm'], self.held_width = 'released', self.held_width, None
+
     def record(self, result, step=None):
         """Add a skill result (step: the step it ran at; default the current one)."""
-        entry = dict(result, step=self.step if step is None else step,
-                     tcp_at=tcp_at(self.poses, self.approach, result['tcp']))
+        at, level = locate(self.poses, self.approach, result['tcp'])
+        entry = dict(result, step=self.step if step is None else step, tcp_at=at, tcp_level=level)
         self.results.append(entry)
-        slot = result['args']
-        if result['skill'] in ('pick', 'place') and slot in self.slots and result['ok']:
-            s = self.slots[slot]
-            if result['skill'] == 'pick':
-                s['picks'] += 1
-                gripped = result['gripper']['obj'] == OBJ_STOPPED
-                s['gripped' if gripped else 'empty'] += 1
-                s['event'] = 'taken' if gripped else 'empty'
-                s['width_mm'] = self.held_width = result['gripper']['width_mm'] if gripped else None
-            else:
-                s['placed'] += 1
-                s['event'], s['width_mm'], self.held_width = 'released', self.held_width, None
-            s['last'] = describe(result)
-        elif slot in self.slots:
+        was_holding, self.holding = self.holding, result['gripper']['obj'] == OBJ_STOPPED
+        skill, ok = result['skill'], result['ok']
+        if skill in ('close', 'open'):
+            if ok and skill == 'close' and at in self.slots and level == 'down':
+                self._pick(at, result)
+                self.slots[at]['last'] = describe(result)
+            elif ok and skill == 'open' and was_holding and at in self.slots and \
+                    (level == 'down' or at in BINS):
+                self._place(at)
+                self.slots[at]['last'] = describe(result)
+            return
+        slot = result['args'] if skill in ('pick', 'place') else at
+        if skill in ('pick', 'place') and slot in self.slots and ok:
+            self._pick(slot, result) if skill == 'pick' else self._place(slot)
+            self.slots[slot]['last'] = describe(result)
+        elif slot in self.slots and not ok:
             self.slots[slot]['last'] = describe(result)
             if not result['ok']:
                 self.slots[slot]['event'] = 'failed'
@@ -116,21 +147,18 @@ class Tracker:
     def build(self, gripper, tcp):
         """The state for the decider, from the current gripper reading and TCP pose."""
         history = [{k: r[k] for k in ('step', 'skill', 'args', 'ok', 'reason', 'gripper',
-                                      'tcp_at', 'duration_s')}
+                                      'tcp_at', 'tcp_level', 'duration_s')}
                    for r in self.results[-self.history:]] if self.history else []
+        at, level = locate(self.poses, self.approach, tcp)
         return {'step': self.step, 'instruction': self.instruction,
                 'gripper': {'obj': gripper['obj'], 'meaning': OBJ_MEANING.get(gripper['obj']),
                             'pos': gripper['pos'], 'width_mm': gripper['width_mm']},
                 'holding': gripper['obj'] == OBJ_STOPPED,
-                'tcp_at': tcp_at(self.poses, self.approach, tcp),
+                'tcp_at': at, 'tcp_level': level,
                 'slots': {n: dict(s) for n, s in self.slots.items()},
                 'history': history}
 
-    def options(self, state):
-        """Valid next skills: picks when empty-handed, places when holding, home, done."""
-        names = list(self.slots)
-        if state['holding']:
-            opts = [f'place:{n}' for n in names]
-        else:
-            opts = [f'pick:{n}' for n in names if n not in BINS]
-        return opts + ['home', 'done']
+    def options(self, state=None):
+        """Every primitive, at every step: move to each slot and the bin, down, up, open,
+        close, home, done. No guard: a decider may choose one that does nothing useful."""
+        return [f'move:{n}' for n in self.slots] + list(PRIMITIVE_OPTIONS)
