@@ -54,7 +54,7 @@ Technical documentation is as important as the code in this project. A task is n
   - `docs/setup.md`: procedures, script usage, troubleshooting, reference tables.
   - `docs/commissioning.md`: engineering history, including what went wrong and the lessons learned.
 - A new script gets a row in the Repository table in `docs/architecture.md` and a section under "Running the scripts" in `docs/setup.md`.
-- The README's images in `docs/images/` are generated from [`docs/images/PROMPTS.md`](docs/images/PROMPTS.md). If a change makes an image wrong, update its prompt in the same commit and tell the user the image needs regenerating.
+- The README's images in `docs/images/` are made outside the repository. If a change makes an image wrong, tell the user the image needs regenerating.
 - Match the existing style: plain and precise, tables for settings and references, cross-links between documents.
 - Document only verified facts. Mark anything not yet confirmed on the hardware as unverified (for example, Modbus frames in `docs/setup.md` are checked against `gripper.frame()`).
 

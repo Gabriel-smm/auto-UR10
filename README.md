@@ -1,4 +1,4 @@
-![auto-UR10: a second-hand UR10, controlled from Python](docs/images/readme-banner.png)
+![auto-UR10: How well can an AI act in the real world?](docs/images/readme-banner.png)
 
 # auto-UR10
 

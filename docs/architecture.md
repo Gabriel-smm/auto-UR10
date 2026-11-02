@@ -130,4 +130,4 @@ flowchart TD
 | [`docs/architecture.md`](architecture.md) | This file: flowcharts of the system and the repository map. |
 | [`docs/setup.md`](setup.md) | Lab operating procedure and script reference: network and serial setup, safety checklist, start-up, shutdown, troubleshooting, Modbus reference. |
 | [`docs/commissioning.md`](commissioning.md) | Engineering write-up of how the cell was brought back into service, including the wrong turns. |
-| [`docs/images/`](images/) | The README's images, and [`PROMPTS.md`](images/PROMPTS.md), the prompts that generate them. |
+| [`docs/images/`](images/) | The README's images. |
