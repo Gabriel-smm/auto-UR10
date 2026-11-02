@@ -1,134 +1,90 @@
+![auto-UR10: How well can an AI act in the real world?](docs/images/readme-banner.png)
+
 # auto-UR10
 
-Integrating an autonomous software system for a **Universal Robots UR10** collaborative arm.
+Building an autonomous software system for a second-hand **Universal Robots UR10** arm.
 
-This project brings a second-hand UR10 cell back into service and controls it from Python: the arm over Ethernet with RTDE, and a Robotiq 2F-85 gripper over RS-485 (Modbus RTU), both coordinated from a single script.
+## What this is
 
-## Hardware
+A donated robot arm arrived in the lab with no documentation and with control software whose maker had shut down. This project brought it back into service and controls it from ordinary Python on one computer: the arm, its gripper, and the safety checks around them.
+
+On top of that sits a decision loop: given an instruction like *"Move the block in A to C"*, a decider chooses the robot's next step, one at a time, from what the arm and gripper actually report. The goal is autonomous pick-and-place.
+
+## Status
+
+| Capability | State |
+|---|---|
+| Arm and gripper controlled from one script | **Working on the real robot** |
+| Live position and safety-margin readouts | **Working on the real robot**, checked against the teach pendant |
+| Decision loop with hand-written rules | **Simulation only.** Handles 42 of 63 test runs on the block-moving scenarios, with and without faults; the failures are faults it cannot recover from, like a dropped block. It understands only two fixed forms of instruction |
+| Decision loop with an AI decision model (d3-lite) | **Not working yet.** With the current small-step options it repeats its first move. With the earlier `pick` and `place` options it completed a one-block move in the simulator, with an operator accepting its low-confidence steps |
+| Decision loop on the real robot | **Not yet run** |
+| Vision with the RealSense D455 | **Planned.** The camera is not used by any code yet |
+
+## The cell
+
+![Diagram of the cell: the control computer reaches the UR10 controller and arm over Ethernet, and the Robotiq gripper over USB and RS-485 through the TeachMate. The RealSense camera is planned and not connected.](docs/images/readme-system-overview.png)
+
+One computer talks to two devices over two separate links. The UR10's own controller keeps real-time control of the arm. The gripper needed no new parts: its adapter and wiring were already inside the cart.
 
 | Component | Details |
 |---|---|
 | Robot arm | Universal Robots UR10, CB3 controller, PolyScope 3.15.6 |
 | Base | Ready Robotics TaskMate R10 mobile cart |
 | Gripper | Robotiq 2F-85 (2-finger, electric) |
-| Gripper interface | USB-to-RS-485 adapter, through the Ready Robotics TeachMate |
-| Camera | Intel RealSense D455 |
+| Camera | Intel RealSense D455 (planned) |
 
-## How it works
+## How it decides
 
-```mermaid
-flowchart LR
-    S["pick_test.py"] --> R["ur_rtde"]
-    S --> G["gripper.py"]
-    R -- "Ethernet · RTDE" --> CB3["UR10 CB3 controller"]
-    CB3 --> ARM["UR10 arm"]
-    G -- "USB → RS-485 · Modbus RTU" --> TM["TeachMate"]
-    TM --> GR["Robotiq 2F-85"]
-    R -. "--sim · localhost · RTDE" .-> SIM["URSim UR10 (Docker)"]
-    S -. "--sim" .-> FG["fake_gripper.py"]
-    FG -. "close/open at the TCP" .-> FB["fake_bench.py"]
+![Diagram of the decision loop: read the gripper and arm, decide the next step, check it against the safety limits, have the operator confirm it, move, and feed the measured result into the next step.](docs/images/readme-decision-loop.png)
+
+The decider sees only real readings, never the simulator's hidden truth about where the blocks are. It can be hand-written rules, or a decision model that gives a probability for each option. When the model is not confident enough, it abstains and the operator is asked. Every step is logged, so a run can be replayed and scored afterwards.
+
+## How it stays safe
+
+![Diagram of the safety layers: a chosen step must pass a software check, then operator confirmation, while the UR controller enforces its limits in real time. The layers do not see objects.](docs/images/readme-safety-layers.png)
+
+The software check refuses a move early, with a margin; the robot's controller enforces its limits whatever the software does. These layers know about walls and joint limits, not about objects, so on the real robot the operator watches for collisions with blocks, with a hand on the emergency stop.
+
+## Try it without a robot
+
+![Diagram of two targets for the same scripts: by default the real UR10 and gripper; with --sim, the URSim simulator, a stand-in gripper and a simulated bench. Every run prints its target first.](docs/images/readme-sim-to-real.png)
+
+These two need only Python 3, and neither a robot nor a simulator:
+
+```bash
+pip install -r requirements.txt
+
+python -m pytest tests -q     # offline tests
+python scripts/run_task.py --sim --backend fake --scenario scenarios/nominal.json --mode headless
 ```
 
-Decision loop ([`run_task.py`](scripts/run_task.py)):
+The second one runs a full episode with simulated blocks and prints `success`. To watch the arm move in the simulator (needs Docker), follow [Simulation (URSim)](docs/setup.md#simulation-ursim).
 
-```mermaid
-flowchart LR
-    ST["state.py<br/>(real readings only)"] --> D["decider<br/>rules or Decision model"]
-    D -- "choice + probabilities" --> T{"P ≥ threshold?"}
-    T -- no --> AB["abstain: ask the operator"]
-    T -- yes --> PL["skills.plan<br/>+ preflight"]
-    AB --> PL
-    PL --> OP["operator confirms<br/>(step mode)"]
-    OP --> EX["skills.execute<br/>arm + gripper"]
-    EX -- "measured result" --> ST
-    EX --> LOG["logs/*.jsonl"]
+## Run it on the robot
+
+Read the [safety checklist and start-up procedure](docs/setup.md#pre-session-safety-checklist) first. Keep a hand on the emergency stop during any Python-commanded motion, and do not run a PolyScope program at the same time.
+
+```bash
+python scripts/gripper.py status      # check the gripper answers
+python scripts/safety.py watch        # live distance to the safety limits (read-only)
+python scripts/gripper.py activate    # after every power cycle; the fingers move fully
+python scripts/pick_test.py           # arm + gripper test; the tool lifts 2 cm
 ```
 
-- The **UR10 controller** keeps real-time control and enforces the safety limits (safety planes and joint position limits).
-- **`safety.py`** holds a copy of those limits. The motion scripts check every planned path against it, with a margin, before moving; see [Safety configuration](docs/setup.md#safety-configuration).
-- **`ur_rtde`** sends motion commands and reads the robot state.
-- **`gripper.py`** drives the gripper directly with Modbus RTU frames, without a URCap.
-- The cart's original Ready Robotics ForgeOS layer is not used; the robot runs on native PolyScope.
-- **The decision loop** ([`run_task.py`](scripts/run_task.py)) lets a decider (hand-written rules, or the vllm-sr Decision 2.0 model) choose skills (`pick`, `place`, `home`) from a state built only from gripper and arm readings. Every skill is planned and checked against the safety configuration before it moves, and on the real robot every skill is confirmed by the operator; see [`run_task.py`](docs/setup.md#scriptsrun_taskpy).
-- **URSim**, Universal Robots' simulator, runs as a simulated UR10 in Docker on the control computer, with the robot's installation loaded, so `ur_rtde` scripts can be tried on `127.0.0.1` before the real arm. With `--sim`, **`robot.py`** points the scripts at it and swaps in **`fake_gripper.py`** for the gripper; see [Simulation (URSim)](docs/setup.md#simulation-ursim).
+Every robot script prints `TARGET: REAL ROBOT (192.168.0.1)` or `TARGET: SIMULATOR (127.0.0.1)` before connecting. Check it before every motion run.
 
-## Repository
+## Documentation
 
-| Path | Description |
+| Document | Read it when you want |
 |---|---|
-| `README.md` | Project overview, hardware, architecture and quick usage. |
-| `requirements.txt` | Python dependencies: `ur_rtde`, `pyserial`, `rich` for the decision panel, and `pytest` for the offline tests. |
-| `.gitignore` | Ignores Python artifacts, editor/OS files, robot backups, PolyScope programs, installations and variables files, and logs. |
-| `LICENSE` | MIT License. |
-| `CLAUDE.md` | Guidance for Claude Code: project context, git rules, documentation and hardware-safety requirements. |
-| [`scripts/`](scripts/) | Python control scripts. |
-| [`scripts/gripper.py`](scripts/gripper.py) | Minimal Modbus RTU driver for the Robotiq 2F-85: status, activate, open, close. Usable from the command line or as a module. |
-| [`scripts/pick_test.py`](scripts/pick_test.py) | Arm and gripper smoke test: activates the gripper, lifts the tool 2 cm, closes and opens the gripper, returns to the start pose. |
-| [`scripts/show_pose.py`](scripts/show_pose.py) | Read-only position readout: prints the TCP pose (mm, rotation vector, roll/pitch/yaw) and joint angles, once or continuously with `--watch`. |
-| [`scripts/pick_place.py`](scripts/pick_place.py) | Moves from the current position to a fixed target pose, closes the gripper, and returns to the start. |
-| [`scripts/safety.py`](scripts/safety.py) | The robot's safety configuration (planes, joint limits, TCP, payload) as constants, with path checks for the motion scripts, a live read-only margin display (`watch`), and a check of an exported `.installation` (`compare`). |
-| [`scripts/robot.py`](scripts/robot.py) | Target selection shared by the robot scripts: `--sim`, `--ip` and `UR10_SIM=1`, the `TARGET:` banner, rejection of contradictions, and the choice of `gripper` or `fake_gripper`. |
-| [`scripts/fake_gripper.py`](scripts/fake_gripper.py) | Stand-in for `gripper.py` for simulator runs: same functions and status keys, state in memory, close result set by a scenario (`wide`, `narrow`, none). Opens no port. |
-| [`scripts/fake_bench.py`](scripts/fake_bench.py) | Simulated bench for simulator runs: named slots with grip poses and blocks, what the gripper reports on a close or open at the TCP position, and seeded fault injection (slip, miss, width noise, ghost block) logged as JSON lines. |
-| [`scripts/slots.json`](scripts/slots.json) | Taught TCP poses of the bench slots `A`, `B`, `C`, `bin` and `home` (base frame, m and rotation vector), and `approach_z`, the height above a slot from which the skills descend. |
-| [`scripts/skills.py`](scripts/skills.py) | Skills for the decision loop: the primitives a decider chooses (`move:X` to above a slot or the bin, `down`, `up`, `open`, `close`, `home`), and `pick`/`place` built from them. Each is planned, checked segment by segment before moving, and returns measured gripper readings. |
-| [`scripts/fake_arm.py`](scripts/fake_arm.py) | In-memory stand-in for the RTDE control and receive interfaces, for offline tests and `--backend fake`. |
-| [`scripts/state.py`](scripts/state.py) | Builds the decider's state from real readings only (gripper, TCP slot, per-slot counts, last 5 skill results) and the valid options. |
-| [`scripts/decision.py`](scripts/decision.py) | The `Decision` every decider returns, and the plain-language option descriptions. |
-| [`scripts/decision_rules.py`](scripts/decision_rules.py) | Hand-written baseline decider: a state machine over the same state the model sees. |
-| [`scripts/decision_model.py`](scripts/decision_model.py) | Decider backed by a vllm-sr decision model (default `vllm-sr/d3-lite`, which fits the 4 GB GPU): one `system_one` call per step with `next_skill`, `last_ok` and `task_done`, over `view(state)`: what is known about each slot, without the action history. |
-| `requirements-model.txt` | Extra dependencies for the model decider: `torch`, `transformers>=5.17`, `accelerate`, `safetensors`, and `pillow`, `torchvision`, `opencv-python-headless` (imported by d3). |
-| `pytest.ini` | Registers the `model` test marker and leaves those tests out of the default run. |
-| [`scripts/run_task.py`](scripts/run_task.py) | Runs one decision episode with a terminal panel: state, option probabilities, plan and preflight before moving, result, and (simulator) the bench truth. Step mode confirms every skill; auto and headless are simulator-only. Logs every step to `logs/*.jsonl`. |
-| [`scripts/panel.py`](scripts/panel.py) | The `rich` panels shared by `run_task.py` and `replay.py`. |
-| [`scripts/replay.py`](scripts/replay.py) | Replays a logged episode in the same panels, step by step, without a robot. |
-| [`scripts/run_suite.py`](scripts/run_suite.py) | Runs every scenario under several seeds, headless in the simulator (fake backend by default), and writes a suite file. |
-| [`scripts/summarize.py`](scripts/summarize.py) | Per decider/model: success rate, step accuracy against the bench truth, abstentions right and wrong, reaction to each injected fault, steps, latency and VRAM. |
-| [`scripts/grip_width.py`](scripts/grip_width.py) | Block width <-> 2F-85 finger position, interpolated between calibration points (one measured: 73 mm at pos 67). |
-| [`scripts/ursim.sh`](scripts/ursim.sh) | Starts URSim (CB3, PolyScope 3.15.8) as a UR10 in Docker: image pinned by digest, ports on localhost, programs folder `~/ursim/programs`. |
-| [`scenarios/`](scenarios/) | Bench scenarios for `fake_bench.py` (JSON): blocks per slot, seed and faults, from nominal runs to slips, misses and ghost blocks. |
-| [`tests/`](tests/) | Offline `pytest` tests for the simulation stand-ins; no robot, URSim or gripper needed. |
-| [`docs/`](docs/) | Lab documentation. |
-| [`docs/setup.md`](docs/setup.md) | Lab operating procedure: network and serial setup, safety checklist, start-up, shutdown, troubleshooting, Modbus reference. |
-| [`docs/commissioning.md`](docs/commissioning.md) | Engineering write-up of how the cell was brought back into service, including the wrong turns. |
-
-## Usage
-
-Requirements: Python 3, `ur_rtde`, `pyserial`, and a computer on the robot's subnet (robot at `192.168.0.1`).
-
-```bash
-pip install ur_rtde pyserial
-
-python gripper.py status      # check the gripper answers
-python gripper.py activate    # after every power cycle; fingers open and close fully
-python pick_test.py           # arm + gripper test
-python show_pose.py --watch   # live TCP pose and joint angles (read-only)
-python pick_place.py          # go to target pose, close gripper, return
-python safety.py show         # safety planes, joint limits, TCP and payload
-python safety.py watch        # live distance to planes and joint limits (read-only)
-```
-
-Keep a hand on the emergency stop during any Python-commanded motion, and do not run a PolyScope program at the same time.
-
-Simulator (Docker required; see [Simulation (URSim)](docs/setup.md#simulation-ursim)):
-
-```bash
-scripts/ursim.sh                                  # start URSim as a UR10
-# GUI: http://localhost:6080/vnc.html?host=localhost&port=6080 → ON, START
-python scripts/show_pose.py --sim                # read the simulated robot
-python scripts/safety.py watch --sim
-python scripts/pick_test.py --sim                 # simulated arm, fake gripper
-python scripts/pick_place.py --sim
-python scripts/pick_place.py --sim --scenario scenarios/nominal.json   # simulated blocks
-python -m pytest tests -q                         # offline tests, no robot or URSim
-python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider rules   # decision loop, step mode
-```
-
-Every robot script prints `TARGET: SIMULATOR (127.0.0.1)` or `TARGET: REAL ROBOT (192.168.0.1)` before connecting. Without `--sim`, the usage above is unchanged.
+| [`docs/setup.md`](docs/setup.md) | To run the cell: network and serial setup, safety checklist, every script, troubleshooting, Modbus reference. |
+| [`docs/architecture.md`](docs/architecture.md) | To change the code: technical flowcharts and what every file does. |
+| [`docs/commissioning.md`](docs/commissioning.md) | The story of how the cell came back into service, wrong turns included, and the lessons. |
 
 ## Background
 
-The UR10 and its cart were donated to the lab without documentation. The cart was built around Ready Robotics' ForgeOS, which became unsupported after the company shut down in 2024. Commissioning involved moving the cell to native PolyScope, setting up its safety configuration, clearing leftover fieldbus settings that blocked RTDE, and finding that the RS-485 adapter and wiring for the gripper were already inside the cart, so Python control required no new parts.
+The UR10 and its cart were donated to the lab without documentation. The cart was built around Ready Robotics' ForgeOS, which became unsupported after the company shut down in 2024. Commissioning moved the cell to the robot's native PolyScope software and set up its safety configuration; no parts were bought. [Read the full story](docs/commissioning.md).
 
 ---
 

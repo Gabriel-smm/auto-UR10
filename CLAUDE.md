@@ -13,13 +13,14 @@ Python control of a second-hand **Universal Robots UR10** (CB3 controller, PolyS
 
 Read these before changing anything; do not duplicate their content here:
 
-- [`README.md`](README.md): overview, hardware, architecture, repository map.
-- [`docs/setup.md`](docs/setup.md): lab operating procedure, network and serial setup, safety checklist, troubleshooting, Modbus reference.
+- [`README.md`](README.md): plain overview for newcomers: what the project is, status, diagrams, quick start.
+- [`docs/architecture.md`](docs/architecture.md): flowcharts of the system and the repository map.
+- [`docs/setup.md`](docs/setup.md): lab operating procedure, network and serial setup, safety checklist, script reference, troubleshooting, Modbus reference.
 - [`docs/commissioning.md`](docs/commissioning.md): how the cell was brought back into service, including the wrong turns and lessons.
 
 ### Roadmap
 
-Next goals: **RealSense D455 vision** (perception for picking) and **autonomous pick-and-place**, building on the arm + gripper smoke test in [`scripts/pick_test.py`](scripts/pick_test.py).
+Next goals: **RealSense D455 vision** (perception for picking) and **autonomous pick-and-place**, building on the decision loop in [`scripts/run_task.py`](scripts/run_task.py), which has not yet run on the real robot.
 
 ## Git rules
 
@@ -48,10 +49,12 @@ Use these sections, in this order:
 Technical documentation is as important as the code in this project. A task is not done until the docs reflect it.
 
 - Any change to behavior, usage, hardware setup, wiring, network, PolyScope configuration or safety must update the relevant docs **in the same commit**:
-  - `README.md`: overview, hardware table, architecture diagram, Repository table.
+  - `README.md`: overview, status table, hardware table, quick start. Keep it plain and short; technical detail goes in `docs/`.
+  - `docs/architecture.md`: flowcharts, component descriptions, Repository table.
   - `docs/setup.md`: procedures, script usage, troubleshooting, reference tables.
   - `docs/commissioning.md`: engineering history, including what went wrong and the lessons learned.
-- A new script gets a row in the README Repository table and a section under "Running the scripts" in `docs/setup.md`.
+- A new script gets a row in the Repository table in `docs/architecture.md` and a section under "Running the scripts" in `docs/setup.md`.
+- The README's images in `docs/images/` are made outside the repository. If a change makes an image wrong, tell the user the image needs regenerating.
 - Match the existing style: plain and precise, tables for settings and references, cross-links between documents.
 - Document only verified facts. Mark anything not yet confirmed on the hardware as unverified (for example, Modbus frames in `docs/setup.md` are checked against `gripper.frame()`).
 
