@@ -201,3 +201,21 @@ def test_scenario_files_load_and_run(path):
         bench.update(AWAY)
         bench.open(sc['slots']['bin']['pose'][:3])
     assert all(e['scenario'] == path.stem for e in bench.events)
+
+
+@pytest.mark.parametrize('path', SCENARIOS, ids=lambda p: p.stem)
+def test_scenario_has_instruction_and_reachable_layout(path):
+    sc = fake_bench.load_scenario(str(path))
+    assert sc['instruction'] and sc['expected']
+    assert set(sc['expected']['slots']) <= set(sc['slots'])
+    ids = {s['block']['id'] for s in sc['slots'].values() if s['block']}
+    expected_ids = {b for b in sc['expected']['slots'].values() if b} | set(sc['expected']['binned'])
+    assert expected_ids == ids
+
+
+def test_bin_column_catches_a_drop(make_bench):
+    bench = make_bench()
+    bench.close(A[:3])
+    bench.open([BIN[0], BIN[1], BIN[2] + 0.10])
+    assert [b['id'] for b in bench.binned] == ['a']
+    assert bench.bin_below([BIN[0] + 0.05, BIN[1], BIN[2] + 0.1]) is None

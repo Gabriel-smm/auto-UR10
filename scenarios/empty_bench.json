@@ -1,6 +1,15 @@
 {
   "name": "empty_bench",
   "description": "Nothing on the bench: every close reports gOBJ 3.",
+  "instruction": "Put every block on the bench in the bin.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": null
+    },
+    "binned": []
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {

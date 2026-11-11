@@ -66,10 +66,10 @@ def test_silent_slip_leaves_status(gripper, tcp):
 def test_slip_with_force_shows_in_status(gripper, tcp):
     bench, s = gripper(p_slip=1)
     held = g.close(s, force=100)
-    assert (held['obj'], held['pos']) == (2, fake_bench.pos_for(40))
+    assert (held['obj'], held['pos'], held['current']) == (2, fake_bench.pos_for(40), g.HOLD_CURRENT)
     tcp[:] = AWAY + [0, 0, 0]
     st = g.status(s)
-    assert st['obj'] == 3 and st['pos'] == g.POS_MAX
+    assert (st['obj'], st['pos'], st['current']) == (3, g.POS_MAX, 0)
 
 
 def test_status_slip_shows_in_status(gripper, tcp):

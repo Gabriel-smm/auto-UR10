@@ -8,13 +8,13 @@ position, what the real gripper would report:
     close at a slot with a block    gOBJ 2, pos from the block width; block held
     close anywhere else             gOBJ 3, pos at the requested position
     open at an empty slot           block placed there
-    open at a bin slot              block gone
+    open at a bin slot, or anywhere  block gone
+    above it (a drop into the bin)
     open at an occupied slot or     block dropped (lost)
     away from any slot
 
-pos from a width is interpolated in CALIBRATION, (width mm, pos) points:
-one measured on the 2F-85 (73 mm at pos 67, force 0), and the open and
-closed ends, which are assumed. Add points as blocks are measured.
+pos from a width comes from grip_width.pos_for (calibration points: one
+measured on the 2F-85, the open and closed ends assumed).
 
 Faults, set per scenario and drawn from a generator seeded by the scenario
 seed, so a run repeats exactly:
@@ -35,6 +35,8 @@ bench.injected.
 
 Scenario file (JSON, in scenarios/):
     {"name": "nominal", "seed": 1,
+     "instruction": "Move the block in A to C.",   # for run_task.py
+     "expected": {"slots": {"A": null, "C": "b1"}, "binned": []},
      "slots_file": "../scripts/slots.json",        # poses by slot name
      "slots": {"A": {"block": {"id": "b1", "width_mm": 40}},
                "C": {},
@@ -61,20 +63,13 @@ import sys
 import time
 
 from fake_gripper import OBJ_REACHED, OBJ_STOPPED, POS_CLOSED, POS_MAX, POS_MIN, POS_OPEN
+from grip_width import STROKE_MM, pos_for
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 TOL = 0.02              # m, the TCP is at a slot within this distance of its pose
-STROKE_MM = 85.0        # 2F-85 opening at POS_MIN
-
-# Width (mm) -> pos (counts) when stopped on a block, interpolated between points.
-CALIBRATION = [
-    (0.0, POS_MAX),     # assumed: closed with nothing between the fingers
-    (73.0, 67),         # measured 2026-10-20: 73 mm object, force 0
-    (STROKE_MM, POS_MIN),  # assumed: fully open
-]
 GHOST_WIDTH_MM = 30.0   # width a ghost block reports
 
 FAULTS = {'p_slip': 0.0, 'p_miss': 0.0, 'width_noise_mm': 0.0, 'ghost_block': 0.0}
@@ -84,14 +79,6 @@ SLIP_SIGNALS = ('auto', 'silent', 'status')
 # ---------------------------------------------------------------------------
 # Scenario
 # ---------------------------------------------------------------------------
-
-
-def pos_for(width_mm):
-    """Finger position (counts) when stopped on a block of this width, from CALIBRATION."""
-    width = max(0.0, min(STROKE_MM, width_mm))
-    for (w0, p0), (w1, p1) in zip(CALIBRATION, CALIBRATION[1:]):
-        if width <= w1:
-            return round(p0 + (width - w0) / (w1 - w0) * (p1 - p0))
 
 
 def parse_scenario(data, base_dir='.', name=None):
@@ -127,7 +114,8 @@ def parse_scenario(data, base_dir='.', name=None):
         raise ValueError(f'slip_signal must be one of {SLIP_SIGNALS}')
 
     return {'name': data.get('name', name or 'unnamed'), 'seed': data.get('seed', 0),
-            'slots': slots, 'faults': faults, 'slip_signal': slip_signal}
+            'slots': slots, 'faults': faults, 'slip_signal': slip_signal,
+            'instruction': data.get('instruction'), 'expected': data.get('expected')}
 
 
 def load_scenario(path):
@@ -192,6 +180,17 @@ class Bench:
         name = min(self.slots, key=lambda n: math.dist(xyz, self.slots[n]['pose'][:3]))
         return name if math.dist(xyz, self.slots[name]['pose'][:3]) <= tol else None
 
+    def bin_below(self, xyz, tol=TOL):
+        """A bin slot the TCP is over (horizontally within tol, anywhere above it), or None.
+
+        A block released above a bin falls into it; above any other slot, away
+        from its grip pose, it is dropped and lost.
+        """
+        for name, s in self.slots.items():
+            if s['bin'] and math.dist(xyz[:2], s['pose'][:2]) <= tol and xyz[2] >= s['pose'][2] - tol:
+                return name
+        return None
+
     def close(self, xyz, target=POS_CLOSED, force=0):
         """Close at xyz toward target; returns (gOBJ, pos) as the gripper would report."""
         tcp = [round(a, 4) for a in xyz]
@@ -241,7 +240,7 @@ class Bench:
     def open(self, xyz, target=POS_OPEN):
         """Open at xyz toward target; returns (gOBJ, pos) as the gripper would report."""
         self.update(xyz)    # a pending slip happens on the way, even if nobody polled
-        name = self.slot_at(xyz)
+        name = self.slot_at(xyz) or self.bin_below(xyz)
         block, outcome = self.held, None
         if block:
             slot = self.slots.get(name)

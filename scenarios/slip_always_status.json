@@ -1,6 +1,18 @@
 {
   "name": "slip_always_status",
   "description": "As slip_always, but the status turns to gOBJ 3 when the block falls (not what the 2F-85 does at force 0).",
+  "instruction": "Put every block on the bench in the bin.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": null
+    },
+    "binned": [
+      "narrow1",
+      "wide1"
+    ]
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {

@@ -1,6 +1,17 @@
 {
   "name": "ghost_sometimes",
   "description": "30 % of closes on nothing report an object.",
+  "instruction": "Put every block on the bench in the bin.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": null
+    },
+    "binned": [
+      "wide1"
+    ]
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {

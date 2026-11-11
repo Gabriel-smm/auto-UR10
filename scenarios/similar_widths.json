@@ -1,6 +1,18 @@
 {
   "name": "similar_widths",
   "description": "30 and 32 mm blocks with 2 mm noise: the widths overlap.",
+  "instruction": "Put every block on the bench in the bin.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": null
+    },
+    "binned": [
+      "w30",
+      "w32"
+    ]
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {

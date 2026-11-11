@@ -1,3 +1,4 @@
 ur_rtde
 pyserial
 pytest
+rich

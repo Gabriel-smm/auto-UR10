@@ -1,6 +1,18 @@
 {
   "name": "width_noise_small",
   "description": "Nominal bench with 1 mm width noise.",
+  "instruction": "Put every block on the bench in the bin.",
+  "expected": {
+    "slots": {
+      "A": null,
+      "B": null,
+      "C": null
+    },
+    "binned": [
+      "narrow1",
+      "wide1"
+    ]
+  },
   "seed": 1,
   "slots_file": "../scripts/slots.json",
   "slots": {

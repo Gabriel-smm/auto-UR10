@@ -71,6 +71,7 @@ STA_IN_PROGRESS = 1  # gSTA: activation in progress
 ACTIVATE_POLLS = 1   # status polls that report gSTA = 1 before activation completes
 MOVE_POLLS = 1       # status polls that report gOBJ = 0 (moving) before a move ends
 MOVE_TIME = 0.5      # s, at least this long before a move ends
+HOLD_CURRENT = 5     # current while holding an object with force > 0 (measured at force 100)
 POLL = 0.01          # wait() poll interval (s)
 
 ENV_OBJECT = 'UR10_SIM_OBJECT'  # wide | narrow | none
@@ -179,6 +180,7 @@ def write(s, action, pos=0, speed=0, force=0):
         # Like the real gripper, a move is ignored until activation is complete
         s.goto, s.obj = 1, OBJ_MOVING
         s.polls, s.result = MOVE_POLLS, _move_result(s, pos, force)
+        s.result['current'] = HOLD_CURRENT if s.result['obj'] == OBJ_STOPPED and force > 0 else 0
         s.done = time.time() + MOVE_TIME
     return frame(bytes([0x10, 0x03, 0xE8, 0x00, 0x03]))
 
@@ -206,6 +208,7 @@ def status(s):
         lost = _bench.update(_pose()[:3])
         if lost:
             s.obj, s.pos = lost
+            s.current = 0
     return {'act': s.act, 'goto': s.goto, 'sta': s.sta, 'obj': s.obj,
             'fault': s.fault, 'pos': s.pos, 'current': s.current}
 

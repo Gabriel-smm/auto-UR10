@@ -1,6 +1,6 @@
 # Lab setup and operating procedure
 
-How to set up and run the UR10 cell (UR10 on CB3, PolyScope 3.15.6, Ready Robotics TaskMate R10 cart, Robotiq 2F-85 gripper) from a control computer. For how the cell was brought back into service, see [commissioning.md](commissioning.md). For an overview of the project, see the [README](../README.md).
+How to set up and run the UR10 cell (UR10 on CB3, PolyScope 3.15.6, Ready Robotics TaskMate R10 cart, Robotiq 2F-85 gripper) from a control computer. For how the software fits together and what every file does, see [architecture.md](architecture.md). For how the cell was brought back into service, see [commissioning.md](commissioning.md). For an overview of the project, see the [README](../README.md).
 
 ## Contents
 
@@ -152,7 +152,41 @@ Verified on the robot: the margins from `python scripts/safety.py watch` match w
 
 Run the commands from the repository root.
 
-The scripts that talk to the robot (`pick_test.py`, `pick_place.py`, `show_pose.py`, `safety.py watch`) target the real robot at `192.168.0.1` by default. They also take `--sim` to target the [simulator](#simulation-ursim) instead, and print the target before connecting (see [`scripts/robot.py`](#scriptsrobotpy)).
+The scripts that talk to the robot (`pick_test.py`, `pick_place.py`, `show_pose.py`, `safety.py watch`, `run_task.py`) target the real robot at `192.168.0.1` by default. They also take `--sim` to target the [simulator](#simulation-ursim) instead, and print the target before connecting (see [`scripts/robot.py`](#scriptsrobotpy)).
+
+### Quick reference
+
+Real robot. Keep a hand on the emergency stop during any Python-commanded motion, and do not run a PolyScope program at the same time.
+
+```bash
+python scripts/gripper.py status      # check the gripper answers
+python scripts/gripper.py activate    # after every power cycle; fingers open and close fully
+python scripts/pick_test.py           # arm + gripper test
+python scripts/show_pose.py --watch   # live TCP pose and joint angles (read-only)
+python scripts/pick_place.py          # go to target pose, close gripper, return
+python scripts/safety.py show         # safety planes, joint limits, TCP and payload
+python scripts/safety.py watch        # live distance to planes and joint limits (read-only)
+```
+
+Simulator (Docker required; see [Simulation (URSim)](#simulation-ursim)):
+
+```bash
+scripts/ursim.sh                                  # start URSim as a UR10
+# GUI: http://localhost:6080/vnc.html?host=localhost&port=6080 → ON, START
+python scripts/show_pose.py --sim                 # read the simulated robot
+python scripts/safety.py watch --sim
+python scripts/pick_test.py --sim                 # simulated arm, fake gripper
+python scripts/pick_place.py --sim
+python scripts/pick_place.py --sim --scenario scenarios/nominal.json   # simulated blocks
+python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider rules   # decision loop, step mode
+```
+
+No robot and no simulator:
+
+```bash
+python -m pytest tests -q                         # offline tests
+python scripts/run_task.py --sim --backend fake --scenario scenarios/nominal.json --mode headless
+```
 
 ### `scripts/gripper.py`
 
@@ -328,7 +362,7 @@ With a scenario, it also prints `SCENARIO: <name>  seed <n>  log logs/<name>-<YY
 |---|---|
 | `add_args(parser)` | Add `--sim`, `--ip` and `--scenario` to an `argparse` parser. |
 | `select(parser, args)` | Apply the rules above, print the target, and return `(ip, sim)`. |
-| `gripper(sim, args=None)` | The gripper module for the target: `fake_gripper` or `gripper`. With a scenario in `args`, it gives the fake gripper a bench and opens the log. |
+| `gripper(sim, args=None, pose_fn=None)` | The gripper module for the target: `fake_gripper` or `gripper`. With a scenario in `args`, it gives the fake gripper a bench and opens the log; `pose_fn()` is where the bench reads the TCP pose (default: URSim). |
 
 ### `scripts/fake_gripper.py`
 
@@ -348,7 +382,7 @@ The result of a close depends on the scenario, the object between the fingers:
 | `narrow` | 2 (stopped on object) | 205 ± 2 |
 | none | 3 (reached position) | 228 ± 2 |
 
-Opening gives `obj` 3 and `pos` 3 ± 2. The ± 2 is random noise (`NOISE`). `current` is always 0.
+Opening gives `obj` 3 and `pos` 3 ± 2. The ± 2 is random noise (`NOISE`). `current` is 0, except while holding an object after a close with force above 0, when it is 5 (`HOLD_CURRENT`, the value read on the real gripper at force 100).
 
 > **Placeholders:** the `pos` values for `wide` and `narrow` are not measurements. They are to be replaced once the real blocks exist and have been gripped by the real gripper. The no-object 228 and open 3 are the [observed range](#gripper-serial-link).
 
@@ -385,12 +419,12 @@ The TCP is at a slot when it is within `TOL` (0.02 m) of the slot's pose; `slot_
 | open at a bin slot | 3, as above | block gone (`binned`) |
 | open at an occupied slot or away from any slot | 3, as above | block dropped (`lost`) |
 
-`pos_for` interpolates linearly between the points in `CALIBRATION`:
+`pos_for` comes from [`scripts/grip_width.py`](../scripts/grip_width.py), which interpolates linearly between the points in its `CALIBRATION`; `width_for(pos)` is the inverse, used by the [skills](#scriptsskillspy) to report `width_mm`:
 
 | Width | pos | Source |
 |---|---|---|
 | 0 mm | 228 | assumed: closed on nothing (the observed no-object stop) |
-| 73 mm | 67 | measured on the 2F-85, `python gripper.py close` (force 0), 2026-10-20 |
+| 73 mm | 67 | measured on the 2F-85, `python gripper.py close` at force 0 and at force 100, 2026-10-20 |
 | 85 mm | 3 | assumed: fully open (the observed open stop) |
 
 A straight line from 85 mm at pos 3 to 0 mm at pos 228 would put 73 mm at pos 35, not the measured 67, so the relation is not linear over the stroke. Between the points the values are interpolations.
@@ -431,15 +465,17 @@ Scenario file (JSON):
 
 ```json
 {"name": "nominal", "seed": 1,
+ "instruction": "Move the block in A to C.",
+ "expected": {"slots": {"A": null, "C": "b1"}, "binned": []},
  "slots_file": "../scripts/slots.json",
  "slots": {"A": {"block": {"id": "b1", "width_mm": 40}},
            "C": {},
            "bin": {"bin": true}},
  "faults": {"p_slip": 0.1},
- "slip_signal": "silent"}
+ "slip_signal": "auto"}
 ```
 
-An optional `"description"` is ignored by the code. Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`. Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
+An optional `"description"` is ignored by the code. `"instruction"` is the task given to the decider by [`run_task.py`](#scriptsrun_taskpy), and `"expected"` is the bench at the end of a successful episode: the block id (or `null`) per slot, and the ids that should be in the bin. The fault scenarios use one of two instructions, the ones [`decision_rules.py`](#scriptsdecision_rulespy) understands: "Put every block on the bench in the bin." or "Move the block in X to Y." (`nominal`, `single_A`, `single_B`, `single_C`). The `novel_*` scenarios have no faults and instructions the rules cannot carry out (no rule, or a regex that misreads them); they measure whether a decider follows an instruction written in free text. Only the slots listed are on the bench. A slot takes its pose from `"pose"` or else from `slots_file` (relative to the scenario file); [`scripts/slots.json`](../scripts/slots.json) holds the taught poses of `A`, `B`, `C`, `bin` and `home`, and `approach_z`, the height (m, base frame) above a slot from which the [skills](#scriptsskillspy) descend (`default` 0.10, or per slot name). Unknown fault names, probabilities outside [0, 1], widths outside (0, 85] mm and blocks in a bin are rejected.
 
 ```bash
 python scripts/fake_bench.py scenarios/nominal.json    # print a scenario
@@ -459,6 +495,11 @@ The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `
 | `mixed_faults_seed2` | 2 | As mixed_faults_seed1, other seed. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
 | `mixed_faults_seed3` | 3 | As mixed_faults_seed1, other seed. | `p_slip` 0.2, `p_miss` 0.2, `width_noise_mm` 2, `ghost_block` 0.2 |
 | `narrow_only` | 1 | Two 15 mm blocks. | none |
+| `novel_clear_B` | 1 | "Clear slot B: put its block in the bin." Blocks at A and B. | none |
+| `novel_except_A` | 1 | "Put every block in the bin except the one in A." Blocks at A, B, C. | none |
+| `novel_paraphrase` | 1 | "Take the block that is at C and leave it at A." | none |
+| `novel_two_moves` | 1 | "Move the block in A to C, then the block in B to A." | none |
+| `novel_wide_to_bin` | 1 | "Put every block wider than 35 mm in the bin; put the other blocks back where they were." 20, 40 and 30 mm blocks; the width is known only once a block is gripped. | none |
 | `nominal` | 1 | A wide block at A, a narrow one at B, C empty, no faults. | none |
 | `similar_widths` | 1 | 30 and 32 mm blocks with 2 mm noise: the widths overlap. | `width_noise_mm` 2 |
 | `single_A` | 1 | One wide block at A. | none |
@@ -479,13 +520,299 @@ The scenarios in [`scenarios/`](../scenarios/) all use slots `A`, `B`, `C` and `
 | `update(xyz)` | Applies a pending slip; returns the new `(gOBJ, pos)` with `slip_signal` `status`, else `None`. |
 | `blocks()`, `binned`, `lost`, `events`, `injected`, `log_info()` | State for checks and logs. |
 
+### `scripts/skills.py`
+
+The actions a decider can choose, each planned and checked before anything moves. It is a module, not a command; [`run_task.py`](#scriptsrun_taskpy) uses it.
+
+The decider chooses among **primitives**, one motion or one gripper action per step:
+
+| Option | Segments | Gripper |
+|---|---|---|
+| `move:A`, `move:B`, `move:C`, `move:bin` | lift (if below the target's approach height), transit to the approach point above the slot; it stops there | — |
+| `down` | from above the slot the TCP is over, straight down to its grip pose | — |
+| `up` | from a slot, straight up to its approach point | — |
+| `close` | none | close (force 100) |
+| `open` | none | open |
+| `home` | lift, transit to `home` | — |
+
+`down` and `up` are refused when the TCP is not over a slot (within 20 mm horizontally): the plan has no segments, `ok` is false and the reason is `the gripper is not above a slot`, so nothing moves. `where(poses, approach, tcp)` gives the slot and level (`down` within 10 mm of the grip pose, `above` between it and the approach height).
+
+Moving one block takes about eight primitives: `move:A`, `down`, `close`, `up`, `move:C`, `down`, `open`, `up`. The macros `pick(slot)` (move above, descend, close, lift back), `place(slot)` and `open_gripper()` remain as functions for scripts and tests but are not offered to deciders.
+
+The approach point is the slot pose raised by `approach_z` from [`slots.json`](../scripts/slots.json) (0.10 m) along the base Z axis. Segments of zero length are skipped.
+
+> **No guard on the options.** Every primitive is offered at every step, to see how a decider behaves. The safety checks (planes, joint limits, TCP, speed) still refuse unsafe paths, but nothing stops a `down` with the gripper closed into a slot that holds a block, or a `down` while holding a block into an occupied slot. In the simulator that only shows up in the bench log; on the real arm it would push the fingers or a block into a block. On the real robot, the operator's confirmation of each step is the only guard against it.
+
+| Motion | Used for | Speed | Checked with |
+|---|---|---|---|
+| `moveL` (straight line) | lift, descend, retreat | 0.1 m/s, 0.15 m/s² | `safety.preflight`: active TCP, speed, plane margins and joint headroom along the line |
+| `moveJ` (joint interpolation) | transit | 0.25 rad/s, 0.5 rad/s² | `check_movej`: active TCP; joint headroom at both ends (each joint moves linearly, so the ends are its extremes); plane margins at 50 poses along the move, from the controller's forward kinematics |
+
+Transits are joint moves because a straight line between distant poses can take the shoulder past its narrowed limit (−51°): in URSim, the line from above slot C to `home` reached −34°. The joint targets come from the controller's inverse kinematics, chained from the current joint angles.
+
+`plan(cell, skill, arg)` returns the segments (`kind`, `motion`, `from`, `to`, `q_to`), the gripper action, the speeds and force, and one preflight entry per segment (`problems` and the printed `report`). `ok` is false if any segment has a problem; `execute` then moves nothing and returns the reason. `execute` also refuses a plan if the arm has moved more than 5 mm since it was made.
+
+The result holds only values read at the end of the skill:
+
+```json
+{"skill": "close", "args": null, "ok": true, "reason": null,
+ "gripper": {"obj": 2, "pos": 140, "width_mm": 39.9},
+ "tcp": [0.26359, 0.35385, -0.06808, 2.3187, 2.0941, 0.0978], "duration_s": 0.01}
+```
+
+`width_mm` is `grip_width.width_for(pos)` when gOBJ is 2 (stopped on an object), else `null`. Skills make no decisions: no retries, no choice of the next skill.
+
+Moves are asynchronous. Setting the abort event, or Ctrl-C, calls `stopL` or `stopJ` (2.0 m/s² or rad/s²) and returns `ok` false, reason `aborted`; the arm stays where it stopped.
+
+[`scripts/fake_arm.py`](../scripts/fake_arm.py) stands in for `RTDEControlInterface` and `RTDEReceiveInterface` in the offline tests and with `run_task.py --backend fake`: moves end at once (or after a set time), the active TCP is the expected one, and its kinematics keep every joint far from its limits, so the plane checks run as against the robot.
+
+> **Unverified on the real robot:** every skill. The macros `pick` and `place`, `home`, and an abort during a moveJ were tested in URSim. The primitives have run offline only, on the fake backend: no URSim run with them yet.
+
+### `scripts/state.py`
+
+Builds the state a decider sees, from real readings only: no LLM builds or edits it, and it never holds the bench's true contents or the injected faults. `Tracker(instruction, poses, approach)` keeps the episode's skill results; `build(gripper, tcp)` returns:
+
+```json
+{"step": 3, "instruction": "Move the block in A to C.",
+ "gripper": {"obj": 2, "meaning": "stopped on an object", "pos": 140, "width_mm": 39.9},
+ "holding": true, "tcp_at": "A", "tcp_level": "down",
+ "slots": {"A": {"picks": 1, "gripped": 1, "empty": 0, "placed": 0, "event": "taken", "width_mm": 39.9,
+                 "last": "close: gripper stopped on an object, width 39.9 mm"},
+           "B": {"picks": 0, "gripped": 0, "empty": 0, "placed": 0, "event": null, "width_mm": null, "last": null},
+           "...": "..."},
+ "history": [{"step": 2, "skill": "close", "args": null, "ok": true, "reason": null,
+              "gripper": {"obj": 2, "pos": 140, "width_mm": 39.9}, "tcp_at": "A", "tcp_level": "down",
+              "duration_s": 0.01},
+             "..."]}
+```
+
+| Field | From |
+|---|---|
+| `gripper`, `holding` | the gripper status read now; `holding` is gOBJ 2 |
+| `tcp_at`, `tcp_level` | the slot the TCP is at or above (up to its approach height), `home`, or `null`; the level is `down`, `above` or `null` |
+| `slots` | per slot, counted from skill results: picks, picks that ended holding (`gripped`) or on nothing (`empty`), places, the latest `event` there (`taken`, `empty`, `released`, `failed`, or `null` if never visited), `width_mm` of the block taken from or left there (as measured when it was gripped), and the last result in words |
+| `history` | the last 5 skill results |
+
+`options(state)` gives the same list at every step, from the skill library and `slots.json` only: `move:A`, `move:B`, `move:C`, `move:bin`, `down`, `up`, `open`, `close`, `home`, `done`. The state's `tcp_at` and `tcp_level` (`above`, `down`, or `null`) say where the arm is. Slot events come from the primitives: a `close` while down at a slot is a pick (`taken` or `empty`); an `open` while down at a slot, or anywhere over the bin, after holding a block, is a place (`released`). The macros `pick` and `place` are still recorded the old way.
+
+### `scripts/decision_rules.py`
+
+The hand-written baseline decider, for comparison with the model. It reads only the state and understands the two scenario instructions.
+
+It first picks a goal:
+
+| Instruction | Goal |
+|---|---|
+| Put every block on the bench in the bin. | holding: `place:bin`; else `pick` the first slot not yet gripped from and not found empty twice; none left: `done` |
+| Move the block in X to Y. | holding: `place:Y`; gripped from X and released at Y: `done`; X found empty fewer than twice: `pick:X`; else `done` |
+
+then takes the first primitive towards it (`decision.next_primitives`, shared with `summarize.py`):
+
+| Goal | Primitives, from where the arm and gripper are |
+|---|---|
+| `pick:X` | `open` if the gripper is closed and empty; `up` if down in another slot; `move:X`; `down`; `close` |
+| `place:Y` | `up` if down in another slot; `move:Y`; `down`; `open` (over the bin it opens from above) |
+
+Its probabilities are 1.0 for the choice and 0.0 for the rest. `last_ok` is judged from the last result: a close that ended holding, an open that ended open, and a move after which a held block is gone (a slip) is a failure. `task_done` is 1.0 when it chooses `done`. Every decider implements `decide(state, options) -> Decision` ([`scripts/decision.py`](../scripts/decision.py)): `choice`, `probs`, `last_ok_prob`, `task_done_prob`, `latency_s`, `raw`.
+
+With the fault-free scenarios, ghost blocks and occasional misses, the rules reach the expected bench. They cannot recover a block that slipped (it is lost) or get past a slot that always misses.
+
+### `scripts/decision_model.py`
+
+Decider backed by a vllm-sr decision model, which answers typed questions with probabilities and generates no text. The default is [`vllm-sr/d3-lite`](https://huggingface.co/vllm-sr/d3-lite); [`vllm-sr/Decision-2.0-Sol-2B`](https://huggingface.co/vllm-sr/Decision-2.0-Sol-2B) has the same interface. Install the dependencies first:
+
+```bash
+pip install -r requirements-model.txt    # torch, transformers>=5.17, accelerate, safetensors,
+                                         # pillow, torchvision, opencv-python-headless (d3 imports them)
+```
+
+| Model | Parameters | On the control laptop (RTX 500 Ada, 4 GB) |
+|---|---|---|
+| `vllm-sr/d3-lite` (default) | 0.85 B | GPU: 1.6 GB loaded, 1.8 GB peak; about 0.5 s per decision (3 s for the first) |
+| `vllm-sr/Decision-2.0-Sol-2B` | 1.88 B | does not fit the GPU; CPU: about 9 GB of RAM, 30 to 55 s per decision |
+
+Each step makes one `model.system_one(state=json.dumps(view(state)), questions=...)` call. The model does not see the full state but `view(state)`, a short summary of what is known about each slot:
+
+```json
+{"instruction": "Move the block in A to C.", "gripper": "open, empty", "arm": "above C",
+ "blocks_removed_from": ["A"], "blocks_put_in": ["C"], "blocks_in_bin": 0,
+ "found_empty": [], "not_visited_yet": ["B"]}
+```
+
+| Field | From |
+|---|---|
+| `gripper` | `holding a block, <width> mm wide` (gOBJ 2); `open, empty` or `closed, empty` (gOBJ 3, pos below or above 128); otherwise the status meaning |
+| `blocks_removed_from`, `blocks_put_in`, `found_empty` | slots (not the bin) whose latest `event` is `taken`, `released`, `empty` |
+| `arm` | `above X`, `lowered into X` (not "down", which is an option word), `at home`, or `elsewhere, not over a slot` |
+| `blocks_in_bin` | places into the bin |
+| `not_visited_yet` | slots (not the bin) with no event yet, or whose last skill failed |
+
+The model leans towards options whose words the state repeats. With the full state, the `pick` / `A` in `history` and `slots.A.last` pulled it back to A: after `pick:A` it chose `place:A`, and in `slip_always` it kept choosing `pick:A`. The view therefore has no action history, no skill names and no status codes, and a slot appears at most once. Adding the last action back made the choices worse. The rules decider, the panel and the log keep the full state; the view is logged in the decision's `extra.model_state`.
+
+Measured on d3-lite (GPU) with the earlier macro options (`pick`, `place`), on 8 states from the `nominal`, `full_bench` and `empty_bench` scenarios, plus 2 from `slip_always` for the final view; choice correct:
+
+| Input | Correct | Example |
+|---|---|---|
+| full state (before) | 4/8 | after `pick:A`: `place:A` 0.86; after `place:C`: `pick:A` 0.79 |
+| view with an action history | 6/8 | after `place:C`: `pick:C` 0.73 |
+| `view(state)` | 10/10 | after `pick:A`: `place:C` 0.66; after `place:C`: `done` 0.51; `slip_always` after `pick:A`: `pick:C` |
+
+The choice is right but its probability is often 0.3 to 0.66, below the default `--threshold` of 0.7, so in auto mode those steps abstain. `last_ok` is close to 0 in every case (also with the full state and with the last action in the view): d3-lite's `last_ok` does not detect failed skills, and the `detected` column of `summarize.py` should be read with that in mind.
+
+| Question | Type | Asked |
+|---|---|---|
+| `next_skill` | `choice` | Given where the blocks are now and what the instruction asks, which action comes next? The criteria are the valid options, each with a short description (`decision.describe`), e.g. `close`: "Close the gripper, gripping a block if one is between the fingers."; `done`: "Stop: the instruction is fully carried out, or every slot has been checked and nothing is left to do." |
+| `last_ok` | `noul` (yes/no) | Did the most recent action do what it was meant to (for example, the gripper closed on a block when taking one)? |
+| `task_done` | `noul` | Do the blocks' current positions already satisfy the instruction? |
+
+With the macros, d3-lite also completed `nominal` in URSim, in step mode with the operator confirming each step, in two runs (2026-10-21 and 2026-10-26): `pick:A` 0.89, `place:C` 0.66, `done` 0.51. The last two fall below the threshold, so they abstained and the operator accepted them.
+
+**With the primitives** (fake backend, threshold 0, 30 steps), d3-lite does not get past the first move: in `nominal` it chooses `move:A` (0.90) and then `move:A` again at 0.75 for every remaining step, although the view says `arm: above A`; in `single_B` it repeats `move:B` (0.82); in `full_bench` it repeats `move:bin` (0.37).
+
+In URSim and on the real robot, d3-lite with the primitives behaves the same on `nominal`: it repeats the same move and does not finish the task.
+
+A real answer to the old full-state input (d3-lite, scenario `nominal`, after `pick:A`), kept as a parsing fixture:
+
+```json
+{"answers": {"next_skill": {"choice": "place:A", "confidence": 0.489, "type": "choice",
+                            "probabilities": {"place:A": 0.521, "place:C": 0.431, "done": 0.018,
+                                              "place:bin": 0.013, "home": 0.011, "place:B": 0.007}},
+             "last_ok": {"noul": 0.105, "type": "noul"},
+             "task_done": {"noul": 0.196, "type": "noul"}},
+ "model": "d3-lite", "usage": {"input_tokens": 1341, "output_tokens": 0}}
+```
+
+The decision's `choice` is the offered option with the highest probability, `probs` are the `next_skill` probabilities, and `last_ok_prob` and `task_done_prob` are the `noul` values. The model's own `confidence` is kept in `extra` and in the log; it is not the probability the threshold is compared with. An answer without probabilities (for example an over-long state) gives all zeros, so the step abstains.
+
+| Option | Values | Notes |
+|---|---|---|
+| `--model` | default `vllm-sr/d3-lite` | loaded with `AutoModel.from_pretrained(..., trust_remote_code=True)` |
+| `--device` | `auto` (GPU if any), `cuda`, `cpu` | the model's runtime fixes the numerics: BF16 autocast on a GPU, FP32 on the CPU |
+| `--bf16-resident` | flag | keeps the weights in BF16 (Decision 2.0 only; d3 refuses it) |
+
+Sol-2B does not fit the 4 GB GPU: loading runs out of memory at about 3.6 GB, with or without `--bf16-resident`. Both runtimes refuse a `quantization_config`, so 8-bit or 4-bit loading through bitsandbytes is not possible, and the published quantized Sol-2B versions (GGUF, ONNX, MLX) are for other runtimes. That is why the default is d3-lite. A `CUDA out of memory` while loading stops with a message to use a smaller model or `--device cpu`. Both models run their own code from the Hugging Face repository (`trust_remote_code`); review it before loading a new model or revision.
+
+Tests: `tests/test_deciders.py` parses saved real answers (`tests/fixtures/d3lite_after_pick.json`, `sol2b_after_pick.json`); `python -m pytest tests -m model` also loads the default model (on the GPU if there is one; `UR10_MODEL_DEVICE=cpu` to force the CPU).
+
+### `scripts/run_task.py`
+
+Runs one episode: a decider chooses skills until it says `done`. Each step: build the state ([`state.py`](#scriptsstatepy)) → decide → abstain if the chosen option's probability is below `--threshold` → plan and preflight the skill ([`skills.py`](#scriptsskillspy)) → show it → confirm → execute → log.
+
+```bash
+python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider rules        # step mode
+python scripts/run_task.py --sim --scenario scenarios/nominal.json --decider model     # d3-lite
+python scripts/run_task.py --sim --backend fake --scenario scenarios/full_bench.json --mode headless
+python scripts/run_task.py --instruction "Move the block in A to C."                     # real robot
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--sim`, `--ip`, `--scenario` | real robot | as for every robot script ([`robot.py`](#scriptsrobotpy)); the simulator needs `--scenario` |
+| `--backend` | `ursim` | `fake`: [`fake_arm.py`](../scripts/fake_arm.py) instead of URSim, instant moves (simulator only) |
+| `--decider` | `rules` | `rules` ([`decision_rules.py`](#scriptsdecision_rulespy)) or `model` ([`decision_model.py`](#scriptsdecision_modelpy)) |
+| `--model`, `--device`, `--bf16-resident` | `vllm-sr/d3-lite`, `auto` | model decider only |
+| `--instruction` | the scenario's | required on the real robot |
+| `--mode` | `step` | `step`: confirm every skill; `auto` and `headless` (no panel, log only): simulator only |
+| `--threshold` | 0.7 | below it the step abstains: step mode asks you, auto and headless end the episode as `abstained` |
+| `--max-steps` | 60 | one moved block takes about 8 primitive steps |
+| `--speed` | 0.1 m/s | moveL speed; at most 0.1 on the real robot |
+| `--seed` | the scenario's | bench seed |
+
+**Panel**, one per step: the TARGET line (red background on the real robot), scenario, seed, decider, step k/max; the state sent to the decider (summary, `s` expands it); every option with its probability bar, the choice (▶), an override (O), the threshold, `last_ok`, `task_done`, latency and VRAM; the plan with each segment's motion, target and preflight result, before anything moves; after the move, the measured gripper reading, TCP, ok/reason and duration; in the simulator only, the bench truth (slots, held, binned, lost, faults injected in this step), marked as never shown to the decider.
+
+**Keys** (step mode):
+
+| Key | Action |
+|---|---|
+| Enter | execute the shown choice (or the override) |
+| `o`, then a number | override: execute another valid option instead; the plan is redrawn and Enter is needed again |
+| `k` | skip this step without moving |
+| `p` | pause / resume |
+| `s` | expand / collapse the state |
+| `a` | abort: stop the move (`stopL`/`stopJ`) where it is; the arm does not go home |
+| Ctrl-C | the same as `a`, at any time |
+
+In `auto`, `p` and `a` work between steps and `a` and Ctrl-C during a move.
+
+**Real robot**: only `--mode step`; `--instruction` is required; `--speed` at most 0.1 m/s. Before anything connects it shows a checklist (emergency stop in reach, area clear, reduced speed, no PolyScope program running) and continues only if you type `ok`. An unactivated gripper is activated only after Enter. At `done` it asks whether the instruction was carried out (`y`/`n`), since there is no bench truth.
+
+**Log**: `logs/<YYYYmmdd-HHMMSS>-<scenario or real>-<decider>.jsonl`.
+
+| Line | Fields |
+|---|---|
+| `start` | `run_id`, `target`, `ip`, `backend`, `scenario`, `seed`, `faults`, `instruction`, `expected`, `decider`, `model`, `device`, `threshold`, `mode`, `max_steps`, `speed`, `git_commit`, `bench_log` |
+| `step` | `step`, `state`, `options`, `questions`, `decision` (`choice`, `probs`, `last_ok_prob`, `task_done_prob`, `latency_s`, `raw`, `extra`), `abstained`, `operator` (`action`: `exec`, `override`, `skip`, `abort`, `auto` or `abstain`; `choice`: the override), `executed`, `plan`, `preflight`, `result`, `vram_peak_mb`; simulator only: `bench`, `injected` |
+| `end` | `outcome` (`success`, `fail`, `abstained`, `aborted`, `max_steps`, `error`), `steps`; simulator: `final_bench`, `expected`, `match`; real robot: `operator_verdict` |
+
+`decision.choice` is always the decider's choice; what ran is in `executed`, and an override is in `operator`, so overrides are never mixed with the decider's choices. In the simulator, `success` means the bench matches the scenario's `expected` when the episode ends with `done`.
+
+> **Unverified on the real robot.** Tested in URSim with the macro options (rules decider, `full_bench` to success in 7 steps; d3-lite, `nominal` to success in step mode; abort with `a` and with Ctrl-C during a moveJ). With the primitives, tested on the fake backend only.
+
+### `scripts/replay.py`
+
+Shows a logged episode again, step by step, in the same panels as `run_task.py`, with the operator's action under each decision. No robot or simulator is needed.
+
+```bash
+python scripts/replay.py logs/20261020-202116-full_bench-rules.jsonl     # Enter: next step, q: quit
+python scripts/replay.py LOG --all                                        # every step at once
+```
+
+### `scripts/run_suite.py`
+
+Runs every scenario under several seeds, headless in the simulator, loading the decider (and the model) once. Each episode writes its own log (and the bench's event log under `bench/`); the list goes to `logs/suite-<YYYYmmdd-HHMMSS>.json`.
+
+```bash
+python scripts/run_suite.py --decider rules --seeds 1 2 3
+python scripts/run_suite.py --decider model --seeds 1 2 3                        # d3-lite on the GPU
+python scripts/run_suite.py --decider rules --backend ursim          # through URSim: real motion times
+```
+
+| Option | Default |
+|---|---|
+| `--decider`, `--model`, `--device`, `--bf16-resident` | `rules` |
+| `--seeds` | 1 2 3 |
+| `--backend` | `fake` (instant moves); `ursim` for URSim |
+| `--scenarios` | `scenarios/*.json` |
+| `--threshold`, `--max-steps`, `--log-dir` | 0.7, 60, `logs/` |
+
+With the fake backend the rules suite (26 scenarios × 3 seeds) takes about 20 s. With d3-lite on the GPU each decision takes about 0.5 s; with Sol-2B on the CPU, 30 to 55 s, so a full Sol-2B suite takes hours.
+
+### `scripts/summarize.py`
+
+Tables per decider and model from suite files, log folders or single logs:
+
+```bash
+python scripts/summarize.py logs/suite-20261020-202636.json
+python scripts/summarize.py logs/suite-A.json logs/suite-B.json      # rules and model side by side
+```
+
+| Column | Meaning |
+|---|---|
+| success, outcomes | episodes ending in each outcome |
+| step accuracy | decisions judged right against the bench truth before the step (below) |
+| abstentions right / wrong / unscored | an abstention is right when the decider's choice would have been wrong |
+| mean steps; latency median / p95; VRAM peak | per episode; per decision; the highest `vram_peak_mb` logged |
+| per fault: detected | the next decision's `last_ok` was below 0.5 |
+| per fault: retried same slot | one of the next two executed skills picked the faulted slot again |
+| per fault: wrong done | the episode ended with `done` and the bench did not match `expected` |
+
+A decision is right if an ideal decider would take it, given the bench truth: place the held block where `expected` wants it; with nothing held, pick a block that is not yet in place, or `done` if every block is. What the decider cannot know also counts as right: picking a slot never gripped from and found empty fewer than twice, and placing when the state says holding but nothing is (a ghost block). Steps where no offered option is right are not scored.
+
+The rules decider over all 78 episodes (26 scenarios, fake backend, seeds 1–3, measured 2026-11-02): 42 successes, 97% step accuracy (1150/1190).
+
+| Scenarios | Episodes | Successes | Failures |
+|---|---|---|---|
+| fault-free and faulty | 63 | 42 | 21, where it cannot recover: `slip_always`, `slip_always_status`, `miss_always` (3 each), `mixed_faults_seed1` to `seed3` (9 in all), `slip_sometimes` (2), `miss_sometimes` (1) |
+| `novel_*` | 15 | 0 | 15: by design, these instructions are ones the rules cannot carry out |
+
 ### Offline tests
 
 The simulation stand-ins have `pytest` tests in [`tests/`](../tests/). They need no robot, no URSim and no gripper: the TCP position is a stand-in value. From the repository root:
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q
+python -m pytest tests -q                # everything except the real model
+python -m pytest tests -q -m model       # the real Decision model too (needs requirements-model.txt)
 ```
 
 ## Simulation (URSim)
