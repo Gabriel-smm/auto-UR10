@@ -18,7 +18,7 @@ On top of that sits a decision loop: given an instruction like *"Move the block 
 | Live position and safety-margin readouts | **Working on the real robot**, checked against the teach pendant |
 | Decision loop with hand-written rules | **Simulation only.** Handles 42 of 63 test runs on the block-moving scenarios, with and without faults; the failures are faults it cannot recover from, like a dropped block. It understands only two fixed forms of instruction |
 | Decision loop with an AI decision model (d3-lite) | **Not working yet.** With the current small-step options it repeats its first move. With the earlier `pick` and `place` options it completed a one-block move in the simulator, with an operator accepting its low-confidence steps |
-| Decision loop on the real robot | **Not yet run** |
+| Decision loop on the real robot | **Runs, but does not finish a task.** With d3-lite it repeats the same move on `nominal`, as in the simulator |
 | Vision with the RealSense D455 | **Planned.** The camera is not used by any code yet |
 
 ## The cell

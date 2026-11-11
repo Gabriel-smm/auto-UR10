@@ -20,7 +20,7 @@ Read these before changing anything; do not duplicate their content here:
 
 ### Roadmap
 
-Next goals: **RealSense D455 vision** (perception for picking) and **autonomous pick-and-place**, building on the decision loop in [`scripts/run_task.py`](scripts/run_task.py), which has not yet run on the real robot.
+Next goals: **RealSense D455 vision** (perception for picking) and **autonomous pick-and-place**, building on the decision loop in [`scripts/run_task.py`](scripts/run_task.py). It runs on the real robot, but with d3-lite and the primitives it repeats the same move and does not finish `nominal`.
 
 ## Git rules
 

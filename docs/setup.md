@@ -669,7 +669,7 @@ With the macros, d3-lite also completed `nominal` in URSim, in step mode with th
 
 **With the primitives** (fake backend, threshold 0, 30 steps), d3-lite does not get past the first move: in `nominal` it chooses `move:A` (0.90) and then `move:A` again at 0.75 for every remaining step, although the view says `arm: above A`; in `single_B` it repeats `move:B` (0.82); in `full_bench` it repeats `move:bin` (0.37).
 
-> **Unverified:** d3-lite with the primitives in URSim, and any model decider on the robot.
+In URSim and on the real robot, d3-lite with the primitives behaves the same on `nominal`: it repeats the same move and does not finish the task.
 
 A real answer to the old full-state input (d3-lite, scenario `nominal`, after `pick:A`), kept as a parsing fixture:
 

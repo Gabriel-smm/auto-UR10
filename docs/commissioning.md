@@ -90,6 +90,8 @@ The first episodes with d3-lite showed that the model follows words more than me
 
 The decision loop then moved from macro skills (`pick:X`, `place:Y`) to primitives (`move:X` to above a slot, `down`, `up`, `open`, `close`), with every option offered at every step and no guard, to see how the model handles each motion. The rules decider, rewritten as goals turned into primitives, kept its 42 of 63 successes on the original scenarios. d3-lite did not: it repeated its first `move` until the step limit. With no guard, a `down` with a closed gripper or onto an occupied slot is not refused; on the real arm the operator's confirmation is the only guard against pushing into a block.
 
+The loop with d3-lite was then run on the real robot and in URSim. It runs end to end (readings, decision, checks, confirmation, motion), but on `nominal` it behaves as on the fake backend: it chooses the same move again and again and does not finish the task. Development stopped here; this is the open problem for the next stage.
+
 ## 10. Result
 
 The arm and the gripper are now controlled from one Python script: the arm over Ethernet with RTDE, the gripper over RS-485 through the adapter and wiring that were already in the cart. No parts were bought.
